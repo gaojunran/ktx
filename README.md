@@ -4,7 +4,7 @@ A modern Kotlin script runner — what `uv` is for Python, ktx aims to be for `.
 
 > 当前状态：**Phase 1 进行中**。CLI 主干 (`run` / `-e` / stdin) 与 `@file:Toolchain` 预扫描已上线，编译产物缓存指向 `~/.cache/ktx/compiled/`，命中缓存的 `.kts` 二次启动 ~220ms。
 >
-> 完整规划见 [`docs/plan.md`](docs/plan.md)（待补充）。
+> 每一波改动的详细中文实施日志见 [`docs/`](docs/README.md)。
 
 ## 环境要求
 

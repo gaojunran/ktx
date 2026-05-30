@@ -6,6 +6,7 @@ import com.github.ajalt.clikt.parameters.arguments.multiple
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import io.github.nebula.ktx.cli.ToolchainDispatcher
+import io.github.nebula.ktx.cli.ipc.DaemonLifecycle
 import io.github.nebula.ktx.cli.meta.ToolchainHeaderScanner
 import io.github.nebula.ktx.core.deps.FrozenResolver
 import io.github.nebula.ktx.core.deps.Lockfile
@@ -29,8 +30,11 @@ import kotlin.system.exitProcess
  *   - `--frozen`：仅按 `<script>.lock` 解析依赖，禁止联网（CI 友好）；缺
  *     lockfile 直接报错。
  *   - `--lock`：在线解析依赖并写/刷新 `<script>.lock`，再正常执行脚本。
+ *   - `--daemon` / 环境变量 `KTX_DAEMON=1`：通过 ktx daemon 跑，避免编译器
+ *     冷启动开销（Phase 2.1 起）。daemon 不在跑时自动 fork。
  *
- * `--frozen` 与 `--lock` 互斥。
+ * `--frozen` / `--lock` 与 `--daemon` 互斥（Phase 2.1 daemon 暂不支持注入
+ * 自定义 resolver；Phase 2.2 接通）。
  */
 class RunCommand : CliktCommand(name = "run") {
 
@@ -38,6 +42,10 @@ class RunCommand : CliktCommand(name = "run") {
 
     private val frozen by option("--frozen", help = "仅按 lockfile 解析依赖，禁止联网").flag()
     private val refreshLock by option("--lock", help = "在线运行并刷新 lockfile").flag()
+    private val daemon by option(
+        "--daemon",
+        help = "通过 ktx daemon 跑（消除编译器冷启动）。也可设环境变量 KTX_DAEMON=1。",
+    ).flag(default = System.getenv("KTX_DAEMON") == "1")
 
     private val scriptArg by argument(
         name = "SCRIPT",
@@ -47,6 +55,14 @@ class RunCommand : CliktCommand(name = "run") {
 
     override fun run() {
         require(!(frozen && refreshLock)) { "--frozen 与 --lock 互斥" }
+        require(!(daemon && (frozen || refreshLock))) {
+            "Phase 2.1 daemon 暂不支持 --frozen / --lock，请暂时关掉 --daemon"
+        }
+
+        if (daemon) {
+            runViaDaemon()
+            return  // unreachable
+        }
 
         val runner = ScriptRunner()
         val result = when {
@@ -60,6 +76,23 @@ class RunCommand : CliktCommand(name = "run") {
         }
         result.printReports()
         exitProcess(if (result is ResultWithDiagnostics.Success) 0 else 1)
+    }
+
+    private fun runViaDaemon(): Nothing {
+        val client = DaemonLifecycle.ensureRunning()
+        val exitCode = if (scriptArg == "-") {
+            val source = System.`in`.bufferedReader().readText()
+            client.run(scriptPath = null, inlineSource = source, scriptArgs = scriptArgs, virtualName = "<stdin>")
+        } else {
+            val path = resolveScript(scriptArg)
+            // toolchain dispatch：daemon 路径下 jdk 切换语义还没设计 ——
+            // Phase 2.1 暂时让 daemon 用启动它的 JDK 跑。声明了不同 jdk 的
+            // 脚本应当走非 daemon 路径或先 ktx toolchain install 后启动 daemon
+            // 时手动指定 JDK（待 Phase 2.3 完善）。
+            preflightToolchain(path)
+            client.run(scriptPath = path, inlineSource = null, scriptArgs = scriptArgs)
+        }
+        exitProcess(exitCode)
     }
 
     private fun runFile(runner: ScriptRunner): ResultWithDiagnostics<*> {

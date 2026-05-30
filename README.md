@@ -2,7 +2,7 @@
 
 A modern Kotlin script runner — what `uv` is for Python, ktx aims to be for `.kts`.
 
-> 当前状态：**Phase 1 完成**（1.1 CLI / 1.2 lockfile / 1.3 工具链 / 1.4 AppCDS）。`ktx -e ...` 启动 ~150ms，缓存命中跑脚本 ~230ms。下一站 Phase 2 daemon。
+> 当前状态：**Phase 2.1 完成**（最小 daemon）。`ktx run --daemon` 暖时 ~120ms，dev loop（每次改一行重跑）从 750ms 降到 250ms。
 >
 > 每一波改动的详细中文实施日志见 [`docs/`](docs/README.md)。
 
@@ -40,9 +40,9 @@ $KTX toolchain install 17                   # 下载 Adoptium JDK 17
 $KTX toolchain list                         # 列出已装 JDK
 $KTX run samples/toolchain.main.kts         # 脚本声明 @file:Toolchain(jdk="17") 自动切换
 
-$KTX toolchain install 17                   # 下载 Adoptium JDK 17
-$KTX toolchain list                         # 列出已装 JDK
-$KTX run samples/toolchain.main.kts         # 脚本声明 @file:Toolchain(jdk="17") 自动切换
+$KTX run --daemon samples/hello.main.kts    # 通过 daemon 跑（首次 fork，后续暖）
+$KTX daemon status                          # 查 daemon 状态
+$KTX daemon stop                            # 优雅关闭
 ```
 
 ## 已实现 / 计划
@@ -54,7 +54,9 @@ $KTX run samples/toolchain.main.kts         # 脚本声明 @file:Toolchain(jdk="
 | Phase 1.2 | `kts lock` / `kts add` / `--frozen` lockfile 模式 | 完成 |
 | Phase 1.3 | `kts toolchain install / list / path` + `@file:Toolchain(jdk=...)` 路由 | 完成 |
 | Phase 1.4 | CLI AppCDS 归档（启动开销 -80ms） | 完成 |
-| Phase 2 | daemon 化、多 Kotlin 版本支持 | 计划中 |
+| Phase 2.1 | 最小 daemon（dev loop -60%） | 完成 |
+| Phase 2.2 | daemon 路由 + 并发 + 生命周期管理 | 计划中 |
+| Phase 2.3 | 多 Kotlin 编译器版本支持 | 计划中 |
 | Phase 3 | `kts compile`、`kts watch`、native image | 计划中 |
 
 ## 项目布局
@@ -62,9 +64,9 @@ $KTX run samples/toolchain.main.kts         # 脚本声明 @file:Toolchain(jdk="
 ```
 modules/
   core/         # ScriptRunner、KtsScript ScriptDefinition、@file:Toolchain
-  cli/          # clikt 子命令、ToolchainHeaderScanner、Main 入口
+  cli/          # clikt 子命令、ToolchainHeaderScanner、Main 入口、daemon client
   toolchain/    # JDK 下载（Adoptium）、解压、版本管理
-  daemon/       # （计划中）UDS + protobuf RPC
-  protocol/     # （计划中）.proto 定义
+  daemon/       # UDS 服务端、Run handler
+  protocol/     # protobuf 协议定义 + 帧编解码
 samples/        # 样例脚本
 ```

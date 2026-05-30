@@ -6,6 +6,8 @@ plugins {
 dependencies {
     implementation(project(":modules:core"))
     implementation(project(":modules:toolchain"))
+    implementation(project(":modules:protocol"))
+    implementation(project(":modules:daemon"))
     implementation(libs.clikt)
     implementation(libs.slf4j.api)
     runtimeOnly(libs.logback.classic)

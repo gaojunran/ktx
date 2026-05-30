@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package ktx.proto.v1;
+
+option java_package = "io.github.nebula.ktx.proto.v1";
+option java_multiple_files = true;
+
+// ktx daemon RPC，Phase 2.1 最小子集。
+//
+// 帧格式：4 字节 big-endian 长度前缀 + 一个 RequestEnvelope / ResponseEnvelope
+// 序列化字节。每个客户端连接对应一次请求 + 流式响应，处理完 daemon 关连接。
+//
+// 后续版本扩展（Lock / Compile / Status）继续往 RequestEnvelope.oneof 里加。
+
+message RequestEnvelope {
+  // 协议版本：客户端发起时填，daemon 检查不匹配直接返回失败。
+  uint32 protocol_version = 1;
+
+  oneof body {
+    RunRequest run = 10;
+    ShutdownRequest shutdown = 11;
+    StatusRequest status = 12;
+  }
+}
+
+message ResponseEnvelope {
+  oneof body {
+    RunEvent run_event = 10;
+    ShutdownResponse shutdown = 11;
+    StatusResponse status = 12;
+    ErrorEvent error = 99;
+  }
+}
+
+// ---- Run --------------------------------------------------------------
+
+// 跑一个脚本。
+//   - 文件模式：填 script_path（绝对路径），daemon 直接读文件。
+//   - inline 模式：填 inline_source（脚本源码），daemon 把它当 inline 跑。
+// args 透传到脚本的构造器形参。
+message RunRequest {
+  string script_path = 1;     // 与 inline_source 二选一
+  string inline_source = 2;
+  repeated string args = 3;
+  string virtual_name = 4;    // inline 模式的诊断文件名
+  string cwd = 5;             // 客户端的工作目录，daemon 内 chdir 用
+}
+
+// daemon 流式回传：脚本运行期间的 stdout/stderr 字节，最后一个 Exit。
+message RunEvent {
+  oneof kind {
+    bytes stdout = 1;
+    bytes stderr = 2;
+    ExitEvent exit = 3;
+  }
+}
+
+message ExitEvent {
+  int32 exit_code = 1;
+}
+
+// ---- Shutdown / Status -------------------------------------------------
+
+message ShutdownRequest {}
+message ShutdownResponse {}
+
+message StatusRequest {}
+message StatusResponse {
+  uint64 uptime_ms = 1;
+  uint64 scripts_served = 2;
+  uint64 heap_used_bytes = 3;
+  uint64 heap_max_bytes = 4;
+  string ktx_version = 5;
+}
+
+// ---- Error -------------------------------------------------------------
+
+message ErrorEvent {
+  string message = 1;
+}

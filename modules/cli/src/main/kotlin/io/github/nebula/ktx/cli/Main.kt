@@ -4,6 +4,9 @@ import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.core.subcommands
 import io.github.nebula.ktx.cli.command.AddCommand
+import io.github.nebula.ktx.cli.command.DaemonCommand
+import io.github.nebula.ktx.cli.command.DaemonStatusCommand
+import io.github.nebula.ktx.cli.command.DaemonStopCommand
 import io.github.nebula.ktx.cli.command.EvalCommand
 import io.github.nebula.ktx.cli.command.LockCommand
 import io.github.nebula.ktx.cli.command.RunCommand
@@ -35,8 +38,10 @@ fun main(rawArgs: Array<String>) {
     val args = normalizeArgs(rawArgs)
     val toolchain = ToolchainCommand()
         .subcommands(ToolchainListCommand(), ToolchainInstallCommand(), ToolchainPathCommand())
+    val daemon = DaemonCommand()
+        .subcommands(DaemonStatusCommand(), DaemonStopCommand())
     KtxCommand()
-        .subcommands(RunCommand(), EvalCommand(), LockCommand(), AddCommand(), toolchain)
+        .subcommands(RunCommand(), EvalCommand(), LockCommand(), AddCommand(), toolchain, daemon)
         .main(args)
 }
 
@@ -55,7 +60,7 @@ private fun normalizeArgs(args: Array<String>): Array<String> {
     if (first == "-e" || first == "--expr") return arrayOf("eval") + args
     if (first == "-") return arrayOf("run") + args
     if (first.startsWith("-")) return args  // --help / -h
-    val knownSubcommands = setOf("run", "eval", "lock", "add", "toolchain")
+    val knownSubcommands = setOf("run", "eval", "lock", "add", "toolchain", "daemon")
     if (first in knownSubcommands) return args
     // 当作脚本路径：存在就注入 run。不存在则交给 clikt 报未知命令，
     // 出来的错误更准确（"Got unexpected extra argument" 之流）。

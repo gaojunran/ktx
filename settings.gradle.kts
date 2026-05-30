@@ -18,4 +18,6 @@ dependencyResolutionManagement {
 include(":modules:core")
 include(":modules:cli")
 include(":modules:toolchain")
+include(":modules:protocol")
+include(":modules:daemon")
 include(":modules:toolchain")

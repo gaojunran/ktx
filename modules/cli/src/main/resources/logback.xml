@@ -6,9 +6,9 @@
         </encoder>
     </appender>
 
-    <root level="INFO">
+    <root level="WARN">
         <appender-ref ref="STDERR"/>
     </root>
 
-    <logger name="ktx" level="DEBUG"/>
+    <logger name="ktx" level="INFO"/>
 </configuration>

@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 }
 
 include(":modules:core")
+include(":modules:cli")

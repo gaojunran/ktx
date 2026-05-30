@@ -2,7 +2,7 @@
 
 A modern Kotlin script runner — what `uv` is for Python, ktx aims to be for `.kts`.
 
-> 当前状态：**Phase 1 进行中**。CLI 主干 (`run` / `-e` / stdin) 与 `@file:Toolchain` 预扫描已上线，编译产物缓存指向 `~/.cache/ktx/compiled/`，命中缓存的 `.kts` 二次启动 ~220ms。
+> 当前状态：**Phase 1.2 完成**。CLI 主干 + `@file:Toolchain` + 编译缓存目录化（1.1）；lockfile + `--frozen` + `kts add`（1.2）。CI 场景下新机器拉代码 `kts run --frozen` 起步 1.6s（在线 run 6.7s）。
 >
 > 每一波改动的详细中文实施日志见 [`docs/`](docs/README.md)。
 
@@ -28,9 +28,13 @@ KTX=$(pwd)/modules/cli/build/install/ktx/bin/ktx
 ```bash
 $KTX samples/hello.main.kts foo bar         # 默认子命令 = run
 $KTX run samples/hello.main.kts foo bar     # 显式
-$KTX samples/ktor-client.main.kts           # 含 @file:DependsOn
+$KTX samples/jackson.main.kts               # 含 @file:DependsOn
 $KTX -e 'println(2 + 3)'                    # 内联表达式
 echo 'println("via stdin")' | $KTX run -    # 从 stdin 读
+
+$KTX lock samples/jackson.main.kts          # 写 <script>.lock
+$KTX run --frozen samples/jackson.main.kts  # 只走 lockfile，不联网
+$KTX add com.example:foo:1.0 samples/foo.kts # 插 @file:DependsOn 并刷 lockfile
 ```
 
 ## 已实现 / 计划
@@ -39,7 +43,7 @@ echo 'println("via stdin")' | $KTX run -    # 从 stdin 读
 |---|---|---|
 | Phase 0 | 复用 `kotlin-main-kts` 跑通 `.main.kts` | 完成 |
 | Phase 1.1 | CLI (`run` / `-e` / stdin) + `@file:Toolchain` 预扫描 + 编译缓存目录化 | 完成 |
-| Phase 1.2 | `kts add` / `kts lock` / `--frozen` lockfile 模式 | 计划中 |
+| Phase 1.2 | `kts lock` / `kts add` / `--frozen` lockfile 模式 | 完成 |
 | Phase 1.3 | `kts toolchain install` (Adoptium API) | 计划中 |
 | Phase 1.4 | CLI AppCDS 归档，CLI 启动 ~80ms | 计划中 |
 | Phase 2 | daemon 化、多 Kotlin 版本支持 | 计划中 |

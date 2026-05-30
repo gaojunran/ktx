@@ -3,7 +3,9 @@ package io.github.nebula.ktx.cli
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.core.subcommands
+import io.github.nebula.ktx.cli.command.AddCommand
 import io.github.nebula.ktx.cli.command.EvalCommand
+import io.github.nebula.ktx.cli.command.LockCommand
 import io.github.nebula.ktx.cli.command.RunCommand
 
 /**
@@ -27,7 +29,7 @@ class KtxCommand : CliktCommand(name = "ktx") {
 fun main(rawArgs: Array<String>) {
     val args = normalizeArgs(rawArgs)
     KtxCommand()
-        .subcommands(RunCommand(), EvalCommand())
+        .subcommands(RunCommand(), EvalCommand(), LockCommand(), AddCommand())
         .main(args)
 }
 
@@ -46,7 +48,7 @@ private fun normalizeArgs(args: Array<String>): Array<String> {
     if (first == "-e" || first == "--expr") return arrayOf("eval") + args
     if (first == "-") return arrayOf("run") + args
     if (first.startsWith("-")) return args  // --help / -h
-    val knownSubcommands = setOf("run", "eval")
+    val knownSubcommands = setOf("run", "eval", "lock", "add")
     if (first in knownSubcommands) return args
     // 当作脚本路径：存在就注入 run。不存在则交给 clikt 报未知命令，
     // 出来的错误更准确（"Got unexpected extra argument" 之流）。

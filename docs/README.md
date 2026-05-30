@@ -4,6 +4,7 @@
 
 | 阶段 | 主题 | 文档 |
 |---|---|---|
+| Phase 1.2 | lockfile + `--frozen` + `kts add` | [phase-1.2.md](./phase-1.2.md) |
 | Phase 1.1 | CLI 主干 (`run` / `-e` / stdin) + `@file:Toolchain` + 编译缓存目录化 | [phase-1.1.md](./phase-1.1.md) |
 | Phase 0   | 复用 `kotlin-main-kts` 跑通 `.main.kts` | [phase-0.md](./phase-0.md) |
 

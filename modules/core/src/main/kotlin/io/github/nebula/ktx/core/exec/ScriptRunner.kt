@@ -1,7 +1,7 @@
 package io.github.nebula.ktx.core.exec
 
 import io.github.nebula.ktx.core.script.KtsScript
-import org.jetbrains.kotlin.mainKts.MainKtsEvaluationConfiguration
+import io.github.nebula.ktx.core.script.withResolverOverride
 import org.jetbrains.kotlin.mainKts.MainKtsHostConfiguration
 import org.slf4j.LoggerFactory
 import java.io.File
@@ -10,7 +10,9 @@ import kotlin.io.path.absolute
 import kotlin.script.experimental.api.EvaluationResult
 import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.script.experimental.api.ScriptDiagnostic
+import kotlin.script.experimental.api.SourceCode
 import kotlin.script.experimental.api.constructorArgs
+import kotlin.script.experimental.dependencies.ExternalDependenciesResolver
 import kotlin.script.experimental.host.toScriptSource
 import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
 import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromTemplate
@@ -44,13 +46,21 @@ class ScriptRunner(
      *
      * @param scriptPath 脚本路径，可以是 `.kts` 或 `.main.kts`。
      * @param scriptArgs 透传给脚本的参数（脚本里通过构造器形参 `args` 拿到）。
+     * @param resolver 可选的依赖 resolver；不传则用 main-kts 默认（联网）。
+     * @param bypassCompiledCache 跳过编译产物缓存（lock 时必须为 true，否则
+     *                            缓存命中会让 RecordingResolver 拿不到记录）。
      */
-    fun run(scriptPath: Path, scriptArgs: Array<String>): ResultWithDiagnostics<EvaluationResult> {
+    fun run(
+        scriptPath: Path,
+        scriptArgs: Array<String>,
+        resolver: ExternalDependenciesResolver? = null,
+        bypassCompiledCache: Boolean = false,
+    ): ResultWithDiagnostics<EvaluationResult> {
         val scriptFile = scriptPath.absolute().toFile().also {
             require(it.isFile) { "脚本不存在：${it.absolutePath}" }
         }
         log.debug("running {} ({} bytes)", scriptFile.absolutePath, scriptFile.length())
-        return evaluate(scriptFile.toScriptSource(), scriptArgs)
+        return evaluate(scriptFile.toScriptSource(), scriptArgs, resolver, bypassCompiledCache)
     }
 
     /**
@@ -63,21 +73,46 @@ class ScriptRunner(
         source: String,
         scriptArgs: Array<String>,
         virtualName: String = "<eval>",
+        resolver: ExternalDependenciesResolver? = null,
+        bypassCompiledCache: Boolean = false,
     ): ResultWithDiagnostics<EvaluationResult> {
         log.debug("running inline script {} ({} chars)", virtualName, source.length)
-        return evaluate(source.toScriptSource(virtualName), scriptArgs)
+        return evaluate(source.toScriptSource(virtualName), scriptArgs, resolver, bypassCompiledCache)
     }
 
     private fun evaluate(
-        source: kotlin.script.experimental.api.SourceCode,
+        source: SourceCode,
         scriptArgs: Array<String>,
-    ): ResultWithDiagnostics<EvaluationResult> {
-        val hostConfig = MainKtsHostConfiguration()
-        val compilationConfig = createJvmCompilationConfigurationFromTemplate<KtsScript>(hostConfig)
-        val evaluationConfig = createJvmEvaluationConfigurationFromTemplate<KtsScript>(hostConfig) {
-            constructorArgs(scriptArgs)
+        resolver: ExternalDependenciesResolver?,
+        bypassCompiledCache: Boolean,
+    ): ResultWithDiagnostics<EvaluationResult> = withResolverOverride(resolver) {
+        // resolverOverride ThreadLocal 必须在 createJvmCompilationConfigurationFromTemplate
+        // 调用之前生效 —— 模板里的 ScriptCompilationConfiguration { ... } 块在
+        // 此时实例化，KtsScriptDefinition 会读取 ThreadLocal。
+        //
+        // bypassCompiledCache：临时把 system property 切到一个不存在的 tmp
+        // 目录（一次性、按 nanoTime 命名）。MainKtsHostConfiguration 启动时
+        // 读这个 property，命中条件「目录存在」即用作缓存；把它指到一个不
+        // 存在的目录就可关闭缓存写入并强制重编译。lock 走完后立即恢复。
+        val origCacheDir = System.getProperty(MAIN_KTS_CACHE_DIR_PROPERTY)
+        if (bypassCompiledCache) {
+            // 设为空字符串：MainKtsHostConfiguration 处理逻辑里
+            //   `cacheExtSetting.isBlank() -> null` 直接禁用缓存。
+            System.setProperty(MAIN_KTS_CACHE_DIR_PROPERTY, "")
         }
-        return BasicJvmScriptingHost(hostConfig).eval(source, compilationConfig, evaluationConfig)
+        try {
+            val hostConfig = MainKtsHostConfiguration()
+            val compilationConfig = createJvmCompilationConfigurationFromTemplate<KtsScript>(hostConfig)
+            val evaluationConfig = createJvmEvaluationConfigurationFromTemplate<KtsScript>(hostConfig) {
+                constructorArgs(scriptArgs)
+            }
+            BasicJvmScriptingHost(hostConfig).eval(source, compilationConfig, evaluationConfig)
+        } finally {
+            if (bypassCompiledCache) {
+                if (origCacheDir != null) System.setProperty(MAIN_KTS_CACHE_DIR_PROPERTY, origCacheDir)
+                else System.clearProperty(MAIN_KTS_CACHE_DIR_PROPERTY)
+            }
+        }
     }
 
     companion object {

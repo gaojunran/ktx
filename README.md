@@ -2,7 +2,7 @@
 
 A modern Kotlin script runner — what `uv` is for Python, ktx aims to be for `.kts`.
 
-> 当前状态：**Phase 1.3 完成**。CLI 主干（1.1）+ lockfile / `--frozen`（1.2）+ JDK 工具链管理（1.3）。脚本可声明 `@file:Toolchain(jdk = "17")`，ktx 自动下载并 re-exec 到对应 JDK。
+> 当前状态：**Phase 1 完成**（1.1 CLI / 1.2 lockfile / 1.3 工具链 / 1.4 AppCDS）。`ktx -e ...` 启动 ~150ms，缓存命中跑脚本 ~230ms。下一站 Phase 2 daemon。
 >
 > 每一波改动的详细中文实施日志见 [`docs/`](docs/README.md)。
 
@@ -53,7 +53,7 @@ $KTX run samples/toolchain.main.kts         # 脚本声明 @file:Toolchain(jdk="
 | Phase 1.1 | CLI (`run` / `-e` / stdin) + `@file:Toolchain` 预扫描 + 编译缓存目录化 | 完成 |
 | Phase 1.2 | `kts lock` / `kts add` / `--frozen` lockfile 模式 | 完成 |
 | Phase 1.3 | `kts toolchain install / list / path` + `@file:Toolchain(jdk=...)` 路由 | 完成 |
-| Phase 1.4 | CLI AppCDS 归档，CLI 启动 ~80ms | 计划中 |
+| Phase 1.4 | CLI AppCDS 归档（启动开销 -80ms） | 完成 |
 | Phase 2 | daemon 化、多 Kotlin 版本支持 | 计划中 |
 | Phase 3 | `kts compile`、`kts watch`、native image | 计划中 |
 

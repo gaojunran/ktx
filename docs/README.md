@@ -4,6 +4,7 @@
 
 | 阶段 | 主题 | 文档 |
 |---|---|---|
+| Phase 1.4 | AppCDS 归档削掉 ~80ms 启动开销 | [phase-1.4.md](./phase-1.4.md) |
 | Phase 1.3 | JDK 工具链管理 + `@file:Toolchain(jdk=...)` 真实路由 | [phase-1.3.md](./phase-1.3.md) |
 | Phase 1.2 | lockfile + `--frozen` + `kts add` | [phase-1.2.md](./phase-1.2.md) |
 | Phase 1.1 | CLI 主干 (`run` / `-e` / stdin) + `@file:Toolchain` + 编译缓存目录化 | [phase-1.1.md](./phase-1.1.md) |

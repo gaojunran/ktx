@@ -5,6 +5,7 @@ import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.multiple
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
+import io.github.nebula.ktx.cli.ToolchainDispatcher
 import io.github.nebula.ktx.cli.meta.ToolchainHeaderScanner
 import io.github.nebula.ktx.core.deps.FrozenResolver
 import io.github.nebula.ktx.core.deps.Lockfile
@@ -63,6 +64,9 @@ class RunCommand : CliktCommand(name = "run") {
 
     private fun runFile(runner: ScriptRunner): ResultWithDiagnostics<*> {
         val path = resolveScript(scriptArg)
+        // 如果脚本要求一个不同的 JDK，下面这行会 re-exec 当前进程并不返回。
+        // 没声明、或与当前 JVM 匹配，则继续。
+        ToolchainDispatcher.dispatchIfNeeded(path)
         preflightToolchain(path)
         val args = scriptArgs.toTypedArray()
 
@@ -93,9 +97,8 @@ class RunCommand : CliktCommand(name = "run") {
     }
 
     /**
-     * Phase 1：仅做工具链注解的「前置校验」。
-     *   - `kotlin = "..."` 与 CLI 自带版本不一致就报错（多版本支持留到 Phase 2）；
-     *   - `jdk = "..."` 暂时只记录到日志，等 Toolchain 模块上线后改为真实路由。
+     * Phase 1.3：仅做工具链注解中 Kotlin 版本的「前置校验」。
+     * `jdk` 字段已由 [ToolchainDispatcher] 在更早处理过（不匹配则 re-exec）。
      */
     private fun preflightToolchain(scriptPath: Path) {
         val tc = ToolchainHeaderScanner.scan(scriptPath)
@@ -104,9 +107,6 @@ class RunCommand : CliktCommand(name = "run") {
                 "脚本声明 Kotlin ${tc.kotlin}，但当前 CLI 自带 ${BuildInfo.kotlinVersion}；" +
                     "多 Kotlin 版本支持将在 Phase 2 通过 daemon 路由提供。",
             )
-        }
-        if (tc.jdk.isNotEmpty()) {
-            log.info("脚本声明 JDK {}（Phase 1 暂未实现自动下载，将沿用当前 JVM）", tc.jdk)
         }
     }
 }

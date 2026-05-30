@@ -7,6 +7,10 @@ import io.github.nebula.ktx.cli.command.AddCommand
 import io.github.nebula.ktx.cli.command.EvalCommand
 import io.github.nebula.ktx.cli.command.LockCommand
 import io.github.nebula.ktx.cli.command.RunCommand
+import io.github.nebula.ktx.cli.command.ToolchainCommand
+import io.github.nebula.ktx.cli.command.ToolchainInstallCommand
+import io.github.nebula.ktx.cli.command.ToolchainListCommand
+import io.github.nebula.ktx.cli.command.ToolchainPathCommand
 
 /**
  * `ktx` CLI 入口。
@@ -27,9 +31,12 @@ class KtxCommand : CliktCommand(name = "ktx") {
 }
 
 fun main(rawArgs: Array<String>) {
+    OriginalArgs.set(rawArgs)
     val args = normalizeArgs(rawArgs)
+    val toolchain = ToolchainCommand()
+        .subcommands(ToolchainListCommand(), ToolchainInstallCommand(), ToolchainPathCommand())
     KtxCommand()
-        .subcommands(RunCommand(), EvalCommand(), LockCommand(), AddCommand())
+        .subcommands(RunCommand(), EvalCommand(), LockCommand(), AddCommand(), toolchain)
         .main(args)
 }
 
@@ -48,7 +55,7 @@ private fun normalizeArgs(args: Array<String>): Array<String> {
     if (first == "-e" || first == "--expr") return arrayOf("eval") + args
     if (first == "-") return arrayOf("run") + args
     if (first.startsWith("-")) return args  // --help / -h
-    val knownSubcommands = setOf("run", "eval", "lock", "add")
+    val knownSubcommands = setOf("run", "eval", "lock", "add", "toolchain")
     if (first in knownSubcommands) return args
     // 当作脚本路径：存在就注入 run。不存在则交给 clikt 报未知命令，
     // 出来的错误更准确（"Got unexpected extra argument" 之流）。

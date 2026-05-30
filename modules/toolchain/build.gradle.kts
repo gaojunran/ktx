@@ -3,10 +3,9 @@ plugins {
 }
 
 dependencies {
-    api(libs.kotlin.scripting.jvm.host)
-    api(libs.kotlin.main.kts)
     implementation(libs.slf4j.api)
-    implementation(libs.tomlj)
+    implementation(libs.okhttp)
+    implementation(libs.moshi)
 
     testImplementation(kotlin("test"))
 }

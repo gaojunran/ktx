@@ -1,0 +1,108 @@
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.0.1). Must already exist on the repo."
+        required: true
+
+# A release in flight must finish — never cancel mid-publish.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  MISE_EXPERIMENTAL: "true"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write   # for gh release create / upload assets
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Tag pushes resolve to the tag commit; for workflow_dispatch we
+          # explicitly fetch the named tag below.
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: jdx/mise-action@v2
+        with:
+          experimental: true
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve tag and version
+        id: ver
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::Tag '$tag' does not match v*.*.*"
+            exit 1
+          fi
+          version="${tag#v}"
+          echo "tag=$tag"         | tee -a "$GITHUB_OUTPUT"
+          echo "version=$version" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Build distributions
+        run: mise run dist -- -Pversion=${{ steps.ver.outputs.version }}
+
+      - name: Stage release artifacts
+        id: stage
+        run: |
+          set -eux
+          version="${{ steps.ver.outputs.version }}"
+          src=modules/cli/build/distributions
+          mkdir -p staging
+
+          # The zip is already named ktx-<version>.zip from the Gradle
+          # `archiveBaseName`; copy as-is.
+          cp "$src/ktx-$version.zip" staging/
+
+          # Gradle's distTar produces an uncompressed .tar; gzip it so users
+          # get a single ktx-<version>.tar.gz to download.
+          gzip -c "$src/ktx-$version.tar" > "staging/ktx-$version.tar.gz"
+
+          # Generate sha256 checksums next to the artifacts. Coreutils
+          # `shasum -a 256` is more portable than `sha256sum` (works on
+          # macOS too, even though we're on Ubuntu here, this is a habit
+          # worth keeping).
+          ( cd staging && shasum -a 256 *.zip *.tar.gz > SHASUMS256.txt )
+          cat staging/SHASUMS256.txt
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          # `--draft` so a human can review the auto-generated notes before
+          # the release goes public. `--generate-notes` builds a changelog
+          # from commits / merged PRs since the previous release tag.
+          # Idempotency: if the draft already exists (re-run via
+          # workflow_dispatch), upload assets to the existing draft instead
+          # of failing.
+          if gh release view "$TAG" --json isDraft --jq '.isDraft' >/dev/null 2>&1; then
+            echo "Release $TAG already exists; uploading additional / refreshed assets."
+            gh release upload "$TAG" \
+              staging/ktx-*.zip \
+              staging/ktx-*.tar.gz \
+              staging/SHASUMS256.txt \
+              --clobber
+          else
+            gh release create "$TAG" \
+              --draft \
+              --generate-notes \
+              --title "ktx $TAG" \
+              staging/ktx-*.zip \
+              staging/ktx-*.tar.gz \
+              staging/SHASUMS256.txt
+          fi

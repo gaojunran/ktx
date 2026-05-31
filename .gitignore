@@ -8,3 +8,4 @@ out/
 local.properties
 samples/*.jar
 samples/*.jar
+ktx.usage.kdl

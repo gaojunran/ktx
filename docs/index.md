@@ -37,6 +37,14 @@ features:
     details: CLI, daemon, protocol, toolchain manager, core compiler logic — each in its own Gradle module, each replaceable.
 ---
 
+## Install
+
+```bash
+mise use -g github:gaojunran/ktx@latest
+```
+
+That's it — [mise](https://mise.jdx.dev/) downloads the right archive from GitHub Releases and puts `ktx` on your `PATH`. See [Getting Started](/guide/getting-started) for archive downloads, building from source, and per-project pinning.
+
 ## At a glance
 
 ```bash

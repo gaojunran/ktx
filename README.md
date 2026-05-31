@@ -2,6 +2,12 @@
 
 A modern Kotlin script runner. What `uv` is for Python and `bun` is for JavaScript, ktx aims to be for `.kts`.
 
+[![Documentation](https://img.shields.io/badge/docs-gaojunran.github.io%2Fktx-blue?logo=vitepress&logoColor=white)](https://gaojunran.github.io/ktx/)
+[![Latest release](https://img.shields.io/github/v/release/gaojunran/ktx?include_prereleases&sort=semver&logo=github)](https://github.com/gaojunran/ktx/releases)
+[![CI](https://github.com/gaojunran/ktx/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gaojunran/ktx/actions/workflows/ci.yml)
+
+> 📖 **Full documentation lives at [gaojunran.github.io/ktx](https://gaojunran.github.io/ktx/)** — guides, CLI reference, performance benchmarks, and design notes.
+
 ```bash
 ktx hello.main.kts                     # run a script
 ktx -e 'println(2 + 3)'                # eval an expression
@@ -21,26 +27,23 @@ ktx toolchain install 17               # download a JDK from Adoptium
 - **`ktx compile`** emits a 11–13 MB fat jar that runs on plain JRE 17+, no ktx required.
 - **AppCDS** bakes class metadata at install time, shaving ~80 ms off every CLI invocation.
 
-## Documentation
+## Install
 
-- **User guide** (English): see `docs/` for the VitePress site source. Run `cd docs && pnpm install && pnpm dev` to preview locally.
-- **Implementation journals** (Chinese): see [`reports/`](reports/README.md) for the per-phase design notes, performance data, and gotchas.
-
-## Quick start
+The fastest way to try ktx is via [mise](https://mise.jdx.dev/):
 
 ```bash
-# 1. install build prerequisites (JDK 21 + Gradle 8.14, declared in .mise.toml)
-mise install
-
-# 2. build the CLI distribution
-mise exec -- ./gradlew :modules:cli:installDist
-
-# 3. add the binary to your PATH
-export PATH="$PWD/modules/cli/build/install/ktx/bin:$PATH"
-
-# 4. run a sample
-ktx samples/hello.main.kts foo bar
+mise use -g github:gaojunran/ktx@latest
+ktx --help
 ```
+
+Or download a release archive directly: <https://github.com/gaojunran/ktx/releases>
+
+For building from source, see [Getting Started](https://gaojunran.github.io/ktx/guide/getting-started).
+
+## Documentation
+
+- **User guide** (English): <https://gaojunran.github.io/ktx/> — built from `docs/` (VitePress).
+- **Implementation journals** (Chinese): see [`reports/`](reports/README.md) for the per-phase design notes, performance data, and gotchas.
 
 ## Project layout
 

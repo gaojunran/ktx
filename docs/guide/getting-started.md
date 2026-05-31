@@ -1,20 +1,69 @@
 # Getting Started
 
-ktx is a CLI for running Kotlin `.kts` scripts. This page gets you from zero to a working `ktx` binary on your `PATH`.
+ktx is a CLI for running Kotlin `.kts` scripts. This page gets you to a working `ktx` binary on your `PATH`.
 
-## Prerequisites
+## Install
 
-- **JDK 21 or newer** to build ktx itself. ktx currently ships from source.
-- **Git** to clone the repository.
+### Via mise (recommended)
 
-ktx targets `JVM_17` bytecode, so once installed it can run on JDK 17+. The 21 requirement is purely for building.
+[mise](https://mise.jdx.dev/) installs ktx as a managed tool. It downloads the right release archive for your OS/arch from GitHub, places binaries on your `PATH` automatically, and makes pinning a specific version trivial.
 
-## Build from source
+```bash
+# install latest globally
+mise use -g github:gaojunran/ktx@latest
+
+# or pin a specific version
+mise use -g github:gaojunran/ktx@0.0.1
+
+# verify
+ktx --help
+```
+
+To pin per project, add this to a `mise.toml` or `.mise.toml` at the repo root:
+
+```toml
+[tools]
+"github:gaojunran/ktx" = "latest"
+```
+
+mise's GitHub backend uses the [GitHub Releases](https://github.com/gaojunran/ktx/releases) of this repo. There is no separate registry to maintain.
+
+::: tip Why mise?
+ktx is itself a Kotlin/JVM project — it needs a JDK to run. mise can manage both at once:
+```toml
+[tools]
+java = "temurin-21"
+"github:gaojunran/ktx" = "latest"
+```
+Now `cd`-ing into a directory with this `mise.toml` gives you the right JDK + the right ktx, no global pollution.
+:::
+
+### Via release archive
+
+Download `ktx-<version>.tar.gz` (Unix) or `ktx-<version>.zip` (Windows) from the [releases page](https://github.com/gaojunran/ktx/releases), extract anywhere, and add `bin/` to your `PATH`:
+
+```bash
+curl -L https://github.com/gaojunran/ktx/releases/download/v0.0.1/ktx-0.0.1.tar.gz -o ktx.tar.gz
+tar -xzf ktx.tar.gz
+export PATH="$PWD/ktx-0.0.1/bin:$PATH"
+```
+
+Each release also publishes `SHASUMS256.txt`. Verify with:
+
+```bash
+shasum -a 256 -c <(grep ktx-0.0.1.tar.gz SHASUMS256.txt)
+```
+
+### Build from source
+
+You'll need this if you want to hack on ktx itself or want a build of an unreleased commit.
 
 ```bash
 git clone https://github.com/gaojunran/ktx.git
 cd ktx
-./gradlew :modules:cli:installDist
+mise install                                # provisions JDK 21 + Gradle 8.14
+mise run build                              # ./gradlew :modules:cli:installDist
+export PATH="$PWD/modules/cli/build/install/ktx/bin:$PATH"
 ```
 
 The output appears under `modules/cli/build/install/ktx/`:
@@ -22,22 +71,9 @@ The output appears under `modules/cli/build/install/ktx/`:
 ```
 modules/cli/build/install/ktx/
 ├── bin/
-│   ├── ktx           # the launcher script (Unix)
+│   ├── ktx           # Unix launcher
 │   └── ktx.bat       # Windows launcher
 └── lib/              # all jars, including ktx.jsa (AppCDS archive)
-```
-
-Add `bin/` to your `PATH`:
-
-```bash
-export PATH="$PWD/modules/cli/build/install/ktx/bin:$PATH"
-```
-
-Or copy the whole `install/ktx/` directory to a stable location:
-
-```bash
-cp -r modules/cli/build/install/ktx ~/.local/share/ktx
-ln -s ~/.local/share/ktx/bin/ktx ~/.local/bin/ktx
 ```
 
 ## Verify
@@ -46,6 +82,12 @@ ln -s ~/.local/share/ktx/bin/ktx ~/.local/bin/ktx
 ktx --help
 ktx -e 'println("hello from ktx")'
 ```
+
+## Runtime requirements
+
+ktx needs a **JDK 17 or newer** at runtime. mise users get this implicitly; archive-install users must install a JDK separately or let ktx do it via [`ktx toolchain install`](./toolchain).
+
+ktx does not require a separate Kotlin compiler install — its bundled `kotlin-compiler-embeddable.jar` is self-contained.
 
 ## Your first script
 

@@ -1,5 +1,13 @@
 # FAQ
 
+## What's the easiest way to install ktx?
+
+```bash
+mise use -g github:gaojunran/ktx@latest
+```
+
+[mise](https://mise.jdx.dev/) downloads the right release archive from GitHub, extracts it, and puts `ktx` on your `PATH`. You can pin a specific version (`@0.0.1`) or update later (`mise upgrade`). See [Getting Started](./guide/getting-started) for other install options including build-from-source.
+
 ## How is ktx different from `kotlin foo.main.kts`?
 
 The official `kotlin` CLI is the reference scripting host shipped with the Kotlin distribution. It works, but:

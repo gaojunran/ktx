@@ -1,5 +1,5 @@
 {
-  "updated": "2026-05-31T07:29:34Z",
+  "updated": "2026-05-31T12:12:54Z",
   "unit": "ms",
   "tools": [
     "ktx-daemon",
@@ -16,36 +16,36 @@
       "key": "warm-no-deps",
       "label": "Warm — hello.kts (no deps)",
       "values": {
-        "ktx-daemon": 232,
-        "ktx": 481,
-        "main-kts": 1708
+        "ktx-daemon": 234,
+        "ktx": 501,
+        "main-kts": 1737
       }
     },
     {
       "key": "warm-with-deps",
       "label": "Warm — script with @file:DependsOn",
       "values": {
-        "ktx-daemon": 402,
-        "ktx": 645,
-        "main-kts": 1913
+        "ktx-daemon": 396,
+        "ktx": 673,
+        "main-kts": 1947
       }
     },
     {
       "key": "dev-loop",
       "label": "Dev loop — script edited every run",
       "values": {
-        "ktx-daemon": 630,
-        "ktx": 3860,
-        "main-kts": 4439
+        "ktx-daemon": 662,
+        "ktx": 3949,
+        "main-kts": 4485
       }
     },
     {
       "key": "cold-start",
       "label": "Cold start — caches cleared",
       "values": {
-        "ktx-daemon": 2396,
-        "ktx": 3528,
-        "main-kts": 3938
+        "ktx-daemon": 2504,
+        "ktx": 3574,
+        "main-kts": 4008
       }
     }
   ]

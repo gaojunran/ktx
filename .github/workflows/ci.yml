@@ -20,13 +20,12 @@ permissions: {}
 env:
   MISE_EXPERIMENTAL: "true"
   # Gradle pulls dev.usage-spec:* from GitHub Packages, which requires auth
-  # for any operation including read. Export the runner-provided token under
-  # the variable names settings.gradle.kts looks for.
-  GITHUB_USERNAME: ${{ github.actor }}
-  # Gradle pulls dev.usage-spec:* from GitHub Packages, which requires auth
-  # for any operation including read. Export the runner-provided token under
-  # the variable names settings.gradle.kts looks for.
-  GITHUB_USERNAME: ${{ github.actor }}
+  # for any operation including read. settings.gradle.kts maps these to
+  # the maven `credentials` block. Use KTX_-prefixed vars: GitHub disallows
+  # GH_/GITHUB_ prefixed names in workflow env. The settings file falls back
+  # to GITHUB_USERNAME / GITHUB_TOKEN (the conventional names) when those
+  # are exported by other CI systems or local user shells.
+  KTX_GH_USERNAME: ${{ github.actor }}
 
 jobs:
   test:
@@ -36,10 +35,10 @@ jobs:
       contents: read
       packages: read
     env:
-      # GITHUB_TOKEN is automatically scoped to the workflow; re-export it
-      # under the Gradle-friendly name. Has packages:read above, enough to
-      # GET artifacts from GitHub Packages without writing.
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # GITHUB_TOKEN is auto-injected and reserved; re-expose it under a
+      # KTX_-prefixed name. settings.gradle.kts checks this then falls back
+      # to GITHUB_TOKEN (which is set automatically inside `run:` blocks).
+      KTX_GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,7 +75,7 @@ jobs:
       contents: write
       packages: read
     env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      KTX_GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -123,7 +122,7 @@ jobs:
       contents: write
       packages: read
     env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      KTX_GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -167,7 +166,7 @@ jobs:
       contents: read
       packages: read
     env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      KTX_GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

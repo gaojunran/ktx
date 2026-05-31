@@ -17,18 +17,26 @@ dependencyResolutionManagement {
         // Auth via gradle properties or env vars; the includeGroup filter
         // prevents Gradle from probing this server for unrelated coordinates.
         // GitHub Packages requires a non-empty username but only the token
-        // is actually validated, so we fall back to a placeholder when neither
-        // gradleProperty nor env var supplies one (CI usually has only
-        // GITHUB_TOKEN exported, with no matching user variable).
+        // is actually validated, so we fall back to a placeholder when no
+        // username variable is set.
+        //
+        // Variable lookup order: gradle properties → KTX_GH_* (used by
+        // GitHub Actions in this repo, since the GITHUB_* prefix is
+        // reserved by Actions and can't be set via workflow `env`)
+        // → GITHUB_USERNAME / GITHUB_TOKEN (conventional names users export
+        // locally or other CI systems set for free) → GITHUB_ACTOR
+        // (auto-set inside Actions run-steps) → "ktx-build" placeholder.
         maven {
             name = "GitHubPackagesUsageIntegrations"
             url = uri("https://maven.pkg.github.com/gaojunran/usage-integrations")
             credentials {
                 username = settings.providers.gradleProperty("githubUsername").orNull
+                    ?: System.getenv("KTX_GH_USERNAME")
                     ?: System.getenv("GITHUB_USERNAME")
                     ?: System.getenv("GITHUB_ACTOR")
                     ?: "ktx-build"
                 password = settings.providers.gradleProperty("githubToken").orNull
+                    ?: System.getenv("KTX_GH_TOKEN")
                     ?: System.getenv("GITHUB_TOKEN")
             }
             content {

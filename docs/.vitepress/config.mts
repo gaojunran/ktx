@@ -18,8 +18,8 @@ export default withMermaid(defineConfig({
   ],
 
   themeConfig: {
-    // Nav-bar logo. The PNG mark is square and reads well at 24px.
-    logo: { src: '/logo-mark.png', width: 24, height: 24 },
+    // Nav-bar logo. The glow filter is applied via custom CSS in the theme.
+    logo: { src: '/logo-mark.png', width: 20, height: 20 },
 
     // Site title remains "ktx" plain text next to the logo.
     siteTitle: 'ktx',

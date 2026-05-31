@@ -1,0 +1,56 @@
+/**
+ * Custom styles on top of the default VitePress theme.
+ *
+ * - Logo glow: a soft Kotlin-violet halo behind the logo so it pops on both
+ *   the navbar (light/dark) and the hero. drop-shadow rather than box-shadow
+ *   so it follows the PNG's alpha channel rather than the bounding box.
+ * - Hero image: cap the displayed size; default rendering shows it too big.
+ */
+
+/* Navbar logo */
+.VPNavBarTitle .VPImage.logo,
+.VPNavBarTitle img.logo {
+  filter:
+    drop-shadow(0 0 4px rgba(127, 82, 255, 0.55))
+    drop-shadow(0 0 10px rgba(88, 148, 255, 0.35));
+  transition: filter 200ms ease;
+}
+
+.VPNavBarTitle:hover .VPImage.logo,
+.VPNavBarTitle:hover img.logo {
+  filter:
+    drop-shadow(0 0 6px rgba(127, 82, 255, 0.85))
+    drop-shadow(0 0 14px rgba(88, 148, 255, 0.55));
+}
+
+/* Hero image: glow + sensible cap */
+.VPHero .VPImage,
+.VPHero img.image-src {
+  filter:
+    drop-shadow(0 0 18px rgba(127, 82, 255, 0.45))
+    drop-shadow(0 0 36px rgba(88, 148, 255, 0.25));
+}
+
+/* Cap the hero image at a reasonable size; default fills the slot too greedily.
+   192px keeps the gear/terminal recognizable while ceding space to the headline. */
+.VPHero .image-container {
+  max-width: 220px;
+  max-height: 220px;
+}
+
+.VPHero .image-bg {
+  /* Slightly enlarge the brand-color halo behind the image */
+  width: 220px;
+  height: 220px;
+  filter: blur(60px);
+  opacity: 0.7;
+}
+
+/* Theme accent: lean a bit harder into Kotlin violet on links/buttons.
+   Subtle — only nudges the default brand color toward our logo's primary. */
+:root {
+  --vp-c-brand-1: #7F52FF;
+  --vp-c-brand-2: #5894FF;
+  --vp-c-brand-3: #5894FF;
+  --vp-c-brand-soft: rgba(127, 82, 255, 0.16);
+}

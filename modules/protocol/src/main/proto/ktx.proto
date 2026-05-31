@@ -20,7 +20,20 @@ message RequestEnvelope {
     RunRequest run = 10;
     ShutdownRequest shutdown = 11;
     StatusRequest status = 12;
+    StdinChunk stdin_chunk = 13;
   }
+}
+
+// 流式 stdin：Run 请求后，client 可以发若干 StdinChunk 帧，每帧是一段
+// stdin 字节。eof=true 标志流结束（client 读到 EOF 或 stdin 已读完）。
+// daemon 把 data 一段段写入脚本的 System.in 包装的 PipedOutputStream。
+//
+// Phase 2.3 简化：data 单帧上限走 Frames 的 32MB 默认；脚本读 stdin 时
+// 阻塞等下一帧。client 发完 eof=true 后才轮到 daemon 真正开始处理（脚本
+// 的 readLine() 可能在 client 发出 eof 之前就读到数据）。
+message StdinChunk {
+  bytes data = 1;
+  bool eof = 2;
 }
 
 message ResponseEnvelope {
@@ -48,15 +61,20 @@ message RunRequest {
   // 依赖解析模式，Phase 2.2 起：
   //   NORMAL（默认）：用 main-kts 默认 resolver，联网走 Aether
   //   FROZEN：仅按 lockfile_path 指向的 lockfile 解析，不联网
-  // 后续可加 RECORD（lock 流程）。
+  //   LOCK（Phase 2.3）：在线解析 + 完成后写 lockfile 到 lockfile_path。
+  //                     daemon 端禁用编译产物缓存，确保 RecordingResolver
+  //                     拿得到完整解析记录。
   ResolverMode resolver_mode = 6;
-  string lockfile_path = 7;   // FROZEN 模式必填，绝对路径
-  bytes stdin = 8;            // 一次性传整个 stdin（Phase 2.2 简化版）
+  string lockfile_path = 7;   // FROZEN 必填读取路径，LOCK 必填写入路径
+  // stdin 字节字段已废弃 —— Phase 2.3 起改用流式 StdinChunk 帧。
+  // 字段保留为 reserved，老 client 发的 bytes 也接受但不再优先消费。
+  bytes stdin = 8;
 }
 
 enum ResolverMode {
   NORMAL = 0;
   FROZEN = 1;
+  LOCK = 2;
 }
 
 // daemon 流式回传：脚本运行期间的 stdout/stderr 字节，最后一个 Exit。

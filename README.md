@@ -2,7 +2,7 @@
 
 A modern Kotlin script runner — what `uv` is for Python, ktx aims to be for `.kts`.
 
-> 当前状态：**Phase 2.4 完成**。`ktx compile foo.kts` 输出独立 fat jar（11-13 MB），`java -jar` 直接跑，end user 只需 JRE 17+，不依赖 ktx 也不依赖 Kotlin 编译器。
+> 当前状态：**Phase 2.3 完成**。daemon 支持流式 stdin（`--forward-stdin`）+ `--lock` via daemon。所有 Phase 2 子计划完成。
 >
 > 每一波改动的详细中文实施日志见 [`docs/`](docs/README.md)。
 
@@ -60,7 +60,8 @@ java -jar samples/hello.jar foo bar         # 跑产物（不需要 ktx，仅 JR
 | Phase 2.1 | 最小 daemon（dev loop -60%） | 完成 |
 | Phase 2.2 | daemon 路由 + 并发 + 生命周期 + frozen via daemon | 完成 |
 | Phase 2.4 | `ktx compile` 编译为独立 fat jar | 完成 |
-| Phase 2.3 | 流式 stdin + `--lock` via daemon | 计划中 |
+| Phase 2.3 | 流式 stdin + `--lock` via daemon | 完成 |
+| Phase 3.1 | `ktx compile --self-contained`（jpackage + 最小 JRE） | 计划中 |
 | Phase 3 | `kts compile`、`kts watch`、native image | 计划中 |
 
 ## 项目布局

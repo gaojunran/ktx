@@ -48,6 +48,12 @@ class RunCommand : CliktCommand(name = "run") {
         help = "通过 ktx daemon 跑（消除编译器冷启动）。也可设环境变量 KTX_DAEMON=1。",
     ).flag(default = System.getenv("KTX_DAEMON") == "1")
 
+    private val forwardStdin by option(
+        "--forward-stdin",
+        help = "把 ktx 自身 stdin 流式转发给 daemon 中的脚本（默认关，因为开了" +
+            "会让进程 shutdown 等 stdin read 解开，多 ~300ms 退出延迟）。",
+    ).flag(default = System.getenv("KTX_FORWARD_STDIN") == "1")
+
     private val scriptArg by argument(
         name = "SCRIPT",
         help = "脚本路径，或 `-` 表示从标准输入读取",
@@ -56,9 +62,6 @@ class RunCommand : CliktCommand(name = "run") {
 
     override fun run() {
         require(!(frozen && refreshLock)) { "--frozen 与 --lock 互斥" }
-        require(!(daemon && refreshLock)) {
-            "--lock 暂不支持 --daemon（lock 流程要禁用编译缓存，daemon 共享缓存场景下逻辑未定）"
-        }
 
         if (daemon) {
             runViaDaemon()
@@ -85,9 +88,8 @@ class RunCommand : CliktCommand(name = "run") {
         val (resolverMode, lockfilePath) = pickResolver()
 
         val exitCode = if (scriptArg == "-") {
-            // `ktx run -` 语义：从 stdin 读脚本源码，inline 跑。
-            // 注意 stdin 不会再当数据传给脚本（脚本读 stdin 此时拿不到，
-            // 因为已被读光当源码用了）。这是 Phase 1 起就有的语义。
+            // `ktx run -` 语义：从 stdin 读脚本源码，inline 跑。stdin 不会
+            // 再当数据传给脚本（已被读光当源码用了）。这是 Phase 1 起的语义。
             val source = System.`in`.bufferedReader().readText()
             client.run(
                 scriptPath = null,
@@ -99,17 +101,17 @@ class RunCommand : CliktCommand(name = "run") {
         } else {
             val path = resolveScript(scriptArg)
             preflightToolchain(path)
-            // stdin 透传：Phase 2.2 暂未实装。用 `--daemon` 跑会读 stdin 的脚本时，
-            // daemon 那边的 System.in 是 /dev/null，readLine() 会得到 null。需要
-            // 此功能的用户暂时去掉 --daemon 即可。Phase 2.3 加流式 stdin 透传。
-            val stdinBytes: ByteArray? = null
+            // Phase 2.3：把 ktx 进程自身的 stdin 流式转发给 daemon。
+            // 默认关：开启 pump 线程会让 ktx 进程 shutdown 时等 stdin read
+            // 解开 native 系统调用，引入 ~300ms 退出延迟。需要的用户用
+            // --forward-stdin 或 KTX_FORWARD_STDIN=1 显式开启。
             client.run(
                 scriptPath = path,
                 inlineSource = null,
                 scriptArgs = scriptArgs,
                 resolverMode = resolverMode,
                 lockfilePath = lockfilePath,
-                stdin = stdinBytes,
+                stdin = if (forwardStdin) System.`in` else null,
             )
         }
         exitProcess(exitCode)
@@ -117,16 +119,28 @@ class RunCommand : CliktCommand(name = "run") {
 
     /**
      * 把 CLI 选项 → daemon 协议 ResolverMode + 可选 lockfile 路径。
+     *
+     * Phase 2.3 起：--lock 走 daemon 端的 LOCK 模式，daemon 内禁用编译缓存
+     * 跑一遍脚本，完事写 lockfile。
      */
     private fun pickResolver(): Pair<io.github.nebula.ktx.proto.v1.ResolverMode, Path?> {
-        if (!frozen) return io.github.nebula.ktx.proto.v1.ResolverMode.NORMAL to null
-        if (scriptArg == "-") error("stdin 模式不支持 --frozen（没有对应的 lockfile）")
-        val path = resolveScript(scriptArg)
-        val lockPath = Lockfile.pathFor(path)
-        require(lockPath.exists()) {
-            "frozen 模式需要 lockfile，但找不到：$lockPath。先运行 `ktx lock $scriptArg` 生成。"
+        if (frozen) {
+            if (scriptArg == "-") error("stdin 模式不支持 --frozen（没有对应的 lockfile）")
+            val path = resolveScript(scriptArg)
+            val lockPath = Lockfile.pathFor(path)
+            require(lockPath.exists()) {
+                "frozen 模式需要 lockfile，但找不到：$lockPath。先运行 `ktx lock $scriptArg` 生成。"
+            }
+            return io.github.nebula.ktx.proto.v1.ResolverMode.FROZEN to lockPath
         }
-        return io.github.nebula.ktx.proto.v1.ResolverMode.FROZEN to lockPath
+        if (refreshLock) {
+            if (scriptArg == "-") error("stdin 模式不支持 --lock")
+            // LOCK 模式 daemon 内部按照脚本路径自己算 lockfile 路径，
+            // CLI 不必传（daemon 端 LockingFlow.lockAndOptionallyRun 会用
+            // Lockfile.pathFor）。
+            return io.github.nebula.ktx.proto.v1.ResolverMode.LOCK to null
+        }
+        return io.github.nebula.ktx.proto.v1.ResolverMode.NORMAL to null
     }
 
     /**

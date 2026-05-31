@@ -18,6 +18,9 @@ permissions: {}
 
 env:
   MISE_EXPERIMENTAL: "true"
+  # GitHub Packages auth for the dev.usage-spec:* dependencies pulled by
+  # the CLI module. See settings.gradle.kts for the lookup chain.
+  KTX_GH_USERNAME: ${{ github.actor }}
 
 jobs:
   release:
@@ -25,6 +28,9 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write   # for gh release create / upload assets
+      packages: read    # for GitHub Packages reads of dev.usage-spec:*
+    env:
+      KTX_GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

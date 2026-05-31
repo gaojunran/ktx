@@ -1,0 +1,67 @@
+[tools]
+java = "temurin-21"
+gradle = "8.14"
+node = "20"
+pnpm = "10"
+
+[env]
+# Resolve relative paths from repo root by default; tasks that need otherwise
+# override `dir = "..."`.
+KTX_PROJECT_ROOT = "{{config_root}}"
+
+[tasks.build]
+description = "Build the ktx CLI distribution into modules/cli/build/install/ktx/"
+run = "./gradlew :modules:cli:installDist"
+
+[tasks.test]
+description = "Run all unit tests"
+run = "./gradlew test"
+
+[tasks."test:watch"]
+description = "Run unit tests continuously on file changes"
+run = "./gradlew test --continuous"
+
+[tasks.run]
+description = "Run a sample script through the freshly built ktx CLI"
+depends = ["build"]
+run = "./modules/cli/build/install/ktx/bin/ktx samples/hello.main.kts foo bar"
+
+[tasks."daemon:stop"]
+description = "Stop every running ktx daemon (no-op if none)"
+run = "./modules/cli/build/install/ktx/bin/ktx daemon stop --all || true"
+
+[tasks."daemon:status"]
+description = "Show status of all ktx daemons"
+run = "./modules/cli/build/install/ktx/bin/ktx daemon status --all"
+
+[tasks.clean]
+description = "Clean Gradle build outputs and ktx runtime caches"
+run = """
+./gradlew clean
+rm -rf ~/.cache/ktx
+"""
+
+[tasks."docs:install"]
+description = "Install the VitePress site dependencies"
+dir = "{{config_root}}/docs"
+run = "pnpm install --frozen-lockfile"
+
+[tasks."docs:dev"]
+description = "Start the VitePress site in dev mode at http://localhost:5173"
+dir = "{{config_root}}/docs"
+depends = ["docs:install"]
+run = "pnpm dev"
+
+[tasks."docs:build"]
+description = "Build the VitePress site (output under docs/.vitepress/dist/)"
+dir = "{{config_root}}/docs"
+depends = ["docs:install"]
+run = "pnpm build"
+
+[tasks.dist]
+description = "Produce release archives (zip + tar.gz) under modules/cli/build/distributions/"
+run = "./gradlew :modules:cli:distZip :modules:cli:distTar"
+
+[tasks.ci]
+description = "Run everything CI runs: tests, CLI build, docs build"
+depends = ["test", "build", "docs:build"]

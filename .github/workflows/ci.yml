@@ -1,0 +1,116 @@
+name: ci
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+
+# Newer pushes cancel older runs on the same ref. release.yml has its own
+# concurrency group with cancel-in-progress: false to avoid half-deployed
+# state.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Default to no permissions; each job opts in to what it needs.
+permissions: {}
+
+env:
+  MISE_EXPERIMENTAL: "true"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: jdx/mise-action@v2
+        with:
+          experimental: true
+
+      # gradle/actions/setup-gradle wires up Gradle's own build cache, which
+      # is much more effective than caching ~/.gradle/caches by hand.
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run tests
+        run: mise run test
+
+      - name: Build CLI distribution
+        run: mise run build
+
+      - name: Build VitePress site
+        run: mise run docs:build
+
+      - name: Upload site artifact for deploy job
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/.vitepress/dist
+
+  # Only deploys on pushes to main. PRs build the site (above) but never
+  # publish, so we can verify the build without exposing in-flight changes.
+  deploy-docs:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # Single status check for branch-protection rules: required-status-checks
+  # can target this name and we never have to update the rule when adding
+  # more upstream jobs.
+  final:
+    needs:
+      - test
+      - deploy-docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    # `always()` would override `cancel-in-progress` and waste a runner. The
+    # `!cancelled()` form preserves cancellation while still letting us see
+    # which upstream job failed.
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Gate on upstream job results
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          failed = False
+          for name, data in sorted(needs.items()):
+              result = data.get("result", "unknown")
+              # `skipped` is fine for deploy-docs on PRs, but not for test.
+              if result in ("success", "skipped"):
+                  print(f"::notice::{name}: {result}")
+              else:
+                  print(f"::error::{name}: {result}")
+                  failed = True
+
+          if failed:
+              print("One or more upstream jobs did not complete successfully.")
+              sys.exit(1)
+
+          print("All CI jobs completed successfully.")
+          PY

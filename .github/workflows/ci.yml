@@ -142,7 +142,7 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "docs: refresh generated CLI reference [skip ci]"
-          file_pattern: docs/cli/**
+          file_pattern: "docs/cli/** ktx.usage.kdl"
 
   # Only deploys on pushes to main. PRs build the site (above) but never
   # publish, so we can verify the build without exposing in-flight changes.

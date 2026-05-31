@@ -92,6 +92,45 @@ jobs:
           # The commit message includes [skip ci] so the auto-commit
           # itself does not retrigger this workflow.
 
+  # Regenerate the CLI reference docs (docs/cli/) from the live clikt tree.
+  # Same gating as benchmark: only on push to main; auto-commits its result
+  # back with [skip ci] so the loop terminates. Needs GITHUB_USERNAME +
+  # GITHUB_TOKEN exported into Gradle's repository auth so the build can
+  # pull `dev.usage-spec:clikt-usage` from GitHub Packages.
+  render:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: jdx/mise-action@v4
+        with:
+          experimental: true
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Render CLI docs
+        env:
+          GITHUB_USERNAME: ${{ github.actor }}
+          # GITHUB_TOKEN is auto-injected by Actions but we re-export it
+          # under the name our settings.gradle.kts looks for.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: mise run render
+
+      - name: Commit refreshed CLI docs
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: refresh generated CLI reference [skip ci]"
+          file_pattern: docs/cli/**
+
   # Only deploys on pushes to main. PRs build the site (above) but never
   # publish, so we can verify the build without exposing in-flight changes.
   deploy-docs:
@@ -103,6 +142,9 @@ jobs:
       # tag pushes — though tags don't reach here anyway) the dependency
       # uses `if: !cancelled()` semantics via job-level if checks.
       - benchmark
+      # render does the same for the auto-generated CLI reference under
+      # docs/cli/, regenerated from the live clikt tree on every push.
+      - render
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -145,6 +187,7 @@ jobs:
     needs:
       - test
       - benchmark
+      - render
       - deploy-docs
     runs-on: ubuntu-latest
     timeout-minutes: 2

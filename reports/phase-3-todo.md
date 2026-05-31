@@ -85,6 +85,8 @@ Phase 2.2 的 toolchain 路由按 JDK 主版本分 daemon。Phase 2.3 没做的�
 实测：在 macOS Sonoma + JDK 21 上，`--forward-stdin` 即使 stdin 来源不 EOF（被 sleep 5 hold 住），ktx CLI 进程自身寿命仍稳定在 ~115-140ms。问题不复现。猜测是 daemon thread + native read 的行为在某版 JDK 之后已修。如未来其它平台/版本再现，再考虑 `Channels.newChannel(System.in) + close()` 中断方案。
 
 
+
+
 ## 协议版本演化
 
 Phase 2.3 的字段（StdinChunk、ResolverMode.LOCK）都是 proto3 兼容性扩展，PROTOCOL_VERSION 仍是 1。等到有不兼容改动时（比如改帧格式、删字段）再升 v2。

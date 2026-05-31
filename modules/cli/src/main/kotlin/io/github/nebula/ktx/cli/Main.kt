@@ -4,8 +4,13 @@ import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.core.subcommands
 import io.github.nebula.ktx.cli.command.AddCommand
+import io.github.nebula.ktx.cli.command.CacheCleanCommand
+import io.github.nebula.ktx.cli.command.CacheCommand
+import io.github.nebula.ktx.cli.command.CacheGcCommand
+import io.github.nebula.ktx.cli.command.CacheInfoCommand
 import io.github.nebula.ktx.cli.command.CompileCommand
 import io.github.nebula.ktx.cli.command.DaemonCommand
+import io.github.nebula.ktx.cli.command.DaemonLogsCommand
 import io.github.nebula.ktx.cli.command.DaemonStatusCommand
 import io.github.nebula.ktx.cli.command.DaemonStopCommand
 import io.github.nebula.ktx.cli.command.EvalCommand
@@ -41,9 +46,11 @@ fun main(rawArgs: Array<String>) {
     val toolchain = ToolchainCommand()
         .subcommands(ToolchainListCommand(), ToolchainInstallCommand(), ToolchainPathCommand())
     val daemon = DaemonCommand()
-        .subcommands(DaemonStatusCommand(), DaemonStopCommand())
+        .subcommands(DaemonStatusCommand(), DaemonStopCommand(), DaemonLogsCommand())
+    val cache = CacheCommand()
+        .subcommands(CacheInfoCommand(), CacheCleanCommand(), CacheGcCommand())
     KtxCommand()
-        .subcommands(RunCommand(), EvalCommand(), LockCommand(), AddCommand(), CompileCommand(), toolchain, daemon)
+        .subcommands(RunCommand(), EvalCommand(), LockCommand(), AddCommand(), CompileCommand(), toolchain, daemon, cache)
         .main(args)
 }
 
@@ -64,7 +71,7 @@ private fun normalizeArgs(args: Array<String>): Array<String> {
     if (first == "-e" || first == "--expr") return arrayOf("eval") + args
     if (first == "-") return arrayOf("run") + args
     if (first.startsWith("-")) return args  // --help / -h
-    val knownSubcommands = setOf("run", "eval", "lock", "add", "compile", "toolchain", "daemon")
+    val knownSubcommands = setOf("run", "eval", "lock", "add", "compile", "toolchain", "daemon", "cache")
     if (first in knownSubcommands) return args
     // Treat as a script path: inject `run` if it exists. Otherwise let clikt
     // report unknown command, which gives a more accurate error message

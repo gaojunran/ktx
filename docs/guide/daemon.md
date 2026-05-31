@@ -77,6 +77,27 @@ ktx daemon status --all
 
 Each daemon has its own socket, AppCDS archive, and log file under its keyed directory.
 
+## Inspecting daemon logs
+
+Each daemon writes lifecycle events (start, idle-timeout shutdown, GC warnings) to its own log file under the keyed directory:
+
+```bash
+ktx daemon logs               # last 100 lines of the current-JDK daemon
+ktx daemon logs --tail 20     # last 20 lines
+ktx daemon logs --tail 0      # full log
+ktx daemon logs --all         # every daemon, side by side
+ktx daemon logs --jdk 17      # specifically the JDK 17 daemon
+ktx daemon logs --path        # just print the log path; pipe into tail -f or less
+```
+
+A common pattern for following a live daemon:
+
+```bash
+tail -f "$(ktx daemon logs --path)"
+```
+
+Note: the bundled `kotlin-main-kts` jar transitively ships a `slf4j-simple` binding which can win SLF4J's provider lottery on classpath order, in which case the daemon's logs go to the parent's stderr (and are then discarded by the fork) rather than to the file. Tracked as a follow-up; until then `--path` will still print the canonical location even when the file is empty.
+
 ## Lifecycle
 
 - **Idle timeout**: a daemon exits after 30 minutes of inactivity (configurable via `KTX_DAEMON_IDLE_TIMEOUT_MIN`).
@@ -98,7 +119,7 @@ wait
 
 ## Streaming stdin
 
-Daemon mode does not forward CLI stdin to the script by default. Reading stdin in the daemon would block the JVM shutdown waiting on a native syscall to unblock, adding ~300 ms to every exit.
+Daemon mode does not forward CLI stdin to the script by default. The default makes `ktx run --daemon` exit immediately when the script does, even if the parent shell has a long-running pipe still attached.
 
 To opt in for a single invocation:
 
@@ -111,6 +132,8 @@ To enable globally:
 ```bash
 export KTX_FORWARD_STDIN=1
 ```
+
+When `--forward-stdin` is on, the CLI spawns a pump thread that reads from `System.in` and ships the bytes to the daemon as stdin frames. The pump thread is a daemon thread; on script exit the CLI tears it down and exits, so a stdin pipe that never reaches EOF will not hang the CLI process itself (though the parent shell's pipeline may still wait on the writer).
 
 ## When daemon mode is not the right choice
 

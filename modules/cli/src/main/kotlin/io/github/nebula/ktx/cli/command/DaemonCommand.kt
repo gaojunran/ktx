@@ -1,12 +1,14 @@
 package io.github.nebula.ktx.cli.command
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import io.github.nebula.ktx.cli.ipc.DaemonClient
 import io.github.nebula.ktx.cli.ipc.DaemonLifecycle
 import io.github.nebula.ktx.daemon.DaemonPaths
+import kotlin.io.path.bufferedReader
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
 import kotlin.io.path.listDirectoryEntries
@@ -124,5 +126,92 @@ class DaemonStopCommand : CliktCommand(name = "stop") {
         // Fall through silently. The socket may still be there if cleanup
         // is unusually slow, but ensureRunning has its own retry so we don't
         // need to fail loudly here.
+    }
+}
+
+/**
+ * `ktx daemon logs [--all] [--jdk N] [--tail N | -n N] [--path]`
+ *
+ * Dump the daemon's log file. Each daemon writes to `<daemon-dir>/log` via
+ * a logback FileAppender (no rotation today). To avoid pulling a huge log
+ * into memory, we keep a rolling tail buffer of N lines.
+ *
+ * `--path` prints just the path, useful for piping into `tail -f` / `less`:
+ *
+ *     tail -f "$(ktx daemon logs --path)"
+ */
+class DaemonLogsCommand : CliktCommand(name = "logs") {
+
+    private val all by option("--all", help = "Dump every daemon's log").flag()
+    private val jdkOption by option("--jdk", help = "Target JDK major version (default: current)").int()
+    private val tail by option(
+        "--tail", "-n",
+        help = "Number of trailing lines to print (default 100). Use 0 for the full log.",
+    ).int().default(100)
+    private val pathOnly by option(
+        "--path",
+        help = "Print just the log file path; do not dump contents.",
+    ).flag()
+
+    override fun run() {
+        if (all) {
+            val root = DaemonPaths.defaultDaemonDir()
+            if (!root.exists() || !root.isDirectory()) {
+                echo("(no daemon directory)")
+                return
+            }
+            val instances = root.listDirectoryEntries().filter { it.isDirectory() }
+            if (instances.isEmpty()) {
+                echo("(no daemon instances)")
+                return
+            }
+            instances.forEachIndexed { idx, dir ->
+                if (idx > 0) echo("")
+                printOne(dir)
+            }
+            return
+        }
+        val jdk = jdkOption ?: Runtime.version().feature()
+        printOne(DaemonPaths.daemonDirFor(jdk))
+    }
+
+    private fun printOne(daemonDir: java.nio.file.Path) {
+        val logFile = DaemonPaths.logFile(daemonDir)
+        if (!logFile.exists()) {
+            echo("daemon [${daemonDir.fileName}]: no log file (${logFile})")
+            echo(LOGBACK_HINT)
+            return
+        }
+        if (pathOnly) {
+            echo(logFile.toString())
+            return
+        }
+        echo("==> $logFile <==")
+        if (logFile.toFile().length() == 0L) {
+            echo("(log file is empty — the daemon's slf4j binding falls through to slf4j-simple from")
+            echo(" the bundled main-kts jar, which writes to stderr instead of file. Tracked in TODO.)")
+            return
+        }
+        if (tail <= 0) {
+            // Full dump. Stream line by line so we don't load 10 MB into memory.
+            logFile.bufferedReader().useLines { seq -> seq.forEach { echo(it) } }
+            return
+        }
+        // Rolling tail buffer: O(N) memory regardless of file size.
+        val deque = ArrayDeque<String>(tail)
+        logFile.bufferedReader().useLines { seq ->
+            for (line in seq) {
+                if (deque.size == tail) deque.removeFirst()
+                deque.addLast(line)
+            }
+        }
+        deque.forEach { echo(it) }
+    }
+
+    companion object {
+        private const val LOGBACK_HINT =
+            "(log file is created lazily by logback FileAppender on the daemon's first " +
+                "logger call; if the daemon hasn't started or hasn't logged anything yet, " +
+                "this is expected.)"
     }
 }

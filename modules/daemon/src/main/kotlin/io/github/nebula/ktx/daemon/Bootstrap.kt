@@ -13,6 +13,15 @@ import java.nio.file.Path
  * On startup we also set the system property `ktx.daemon.dir` so the logback
  * config's `${ktx.daemon.dir}/log` placeholder resolves, so each
  * daemon instance writes its own log file.
+ *
+ * Note: the daemon does NOT currently write logs to disk in production
+ * because the cli module ships its own `logback.xml` on the shared
+ * classpath, and main-kts bundles an `slf4j-simple` binding that wins the
+ * SLF4J provider lottery for forked daemon processes. As a result
+ * `~/.cache/ktx/d/<key12>/log` is typically empty. Fixing this requires
+ * either repackaging main-kts to drop its slf4j-simple classes, or
+ * isolating daemon classloading. Tracked in the Phase 3 TODO. Until then
+ * `ktx daemon logs` prints what's there (plus a hint when empty).
  */
 object Bootstrap {
     @JvmStatic

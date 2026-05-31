@@ -20,6 +20,7 @@ import io.github.nebula.ktx.cli.command.ToolchainCommand
 import io.github.nebula.ktx.cli.command.ToolchainInstallCommand
 import io.github.nebula.ktx.cli.command.ToolchainListCommand
 import io.github.nebula.ktx.cli.command.ToolchainPathCommand
+import io.github.nebula.ktx.cli.command.UsageCommand
 
 /**
  * `ktx` CLI entry point.
@@ -49,8 +50,15 @@ fun main(rawArgs: Array<String>) {
         .subcommands(DaemonStatusCommand(), DaemonStopCommand(), DaemonLogsCommand())
     val cache = CacheCommand()
         .subcommands(CacheInfoCommand(), CacheCleanCommand(), CacheGcCommand())
-    KtxCommand()
-        .subcommands(RunCommand(), EvalCommand(), LockCommand(), AddCommand(), CompileCommand(), toolchain, daemon, cache)
+    // UsageCommand needs a fully-assembled root to walk; the lambda lets
+    // it look the root up at run() time, after subcommands are attached.
+    val root = KtxCommand()
+    root
+        .subcommands(
+            RunCommand(), EvalCommand(), LockCommand(), AddCommand(), CompileCommand(),
+            toolchain, daemon, cache,
+            UsageCommand { root },
+        )
         .main(args)
 }
 
@@ -71,7 +79,7 @@ private fun normalizeArgs(args: Array<String>): Array<String> {
     if (first == "-e" || first == "--expr") return arrayOf("eval") + args
     if (first == "-") return arrayOf("run") + args
     if (first.startsWith("-")) return args  // --help / -h
-    val knownSubcommands = setOf("run", "eval", "lock", "add", "compile", "toolchain", "daemon", "cache")
+    val knownSubcommands = setOf("run", "eval", "lock", "add", "compile", "toolchain", "daemon", "cache", "usage")
     if (first in knownSubcommands) return args
     // Treat as a script path: inject `run` if it exists. Otherwise let clikt
     // report unknown command, which gives a more accurate error message

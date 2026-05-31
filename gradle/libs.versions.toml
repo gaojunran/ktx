@@ -3,6 +3,9 @@ kotlin = "2.2.0"
 slf4j = "2.0.16"
 logback = "1.5.12"
 clikt = "5.0.3"
+cliktUsage = "1.1.0"
+kdl4j = "1.0.1"
+kotlinxSerialization = "1.7.3"
 tomlj = "1.1.1"
 okhttp = "4.12.0"
 moshi = "1.15.2"
@@ -15,6 +18,13 @@ kotlin-main-kts = { module = "org.jetbrains.kotlin:kotlin-main-kts", version.ref
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt" }
+clikt-usage = { module = "dev.usage-spec:clikt-usage", version.ref = "cliktUsage" }
+# Core types referenced by clikt-usage (SpecFlag, SpecCommand, etc.). The
+# clikt-usage 1.1.0 POM does not declare these transitively, so we depend
+# on them explicitly.
+usage-spec-kotlin = { module = "dev.usage-spec:usage-spec-kotlin", version.ref = "cliktUsage" }
+kdl4j = { module = "com.github.kdl-org:kdl4j", version.ref = "kdl4j" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 tomlj = { module = "org.tomlj:tomlj", version.ref = "tomlj" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 moshi = { module = "com.squareup.moshi:moshi-kotlin", version.ref = "moshi" }

@@ -9,6 +9,10 @@ dependencies {
     implementation(project(":modules:protocol"))
     implementation(project(":modules:daemon"))
     implementation(libs.clikt)
+    implementation(libs.clikt.usage)
+    implementation(libs.usage.spec.kotlin)
+    implementation(libs.kdl4j)
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.slf4j.api)
     runtimeOnly(libs.logback.classic)
 

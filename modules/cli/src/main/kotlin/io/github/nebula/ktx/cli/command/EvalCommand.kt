@@ -11,17 +11,18 @@ import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.system.exitProcess
 
 /**
- * `ktx eval -e "<expr>" [args...]`，等价快捷写法 `ktx -e "<expr>"`（由 Main 重写为
- * `eval -e ...`，这里通过 option `-e` 给同样的子命令复用）。
+ * `ktx eval -e "<expr>" [args...]`. The shortcut `ktx -e "<expr>"` is rewritten
+ * by Main to `eval -e ...` and reuses this same subcommand via the `-e` option.
  *
- * Phase 1 的最小化语义：把表达式字符串当作完整脚本编译执行；不自动包 println，
- * 让用户自己决定是否打印。这避免了「值有副作用 / 是 Unit / 是协程构建器」时
- * 的歧义。
+ * Phase 1 minimal semantics: treat the expression string as a complete script
+ * and compile/execute it; do not auto-wrap with println, leaving the user to
+ * decide whether to print. This avoids ambiguity when the value has side
+ * effects, is Unit, or is a coroutine builder.
  */
 class EvalCommand : CliktCommand(name = "eval") {
 
-    private val expr by option("-e", "--expr", help = "要执行的 Kotlin 表达式或语句").required()
-    private val scriptArgs by argument(name = "ARGS", help = "传给脚本的参数").multiple()
+    private val expr by option("-e", "--expr", help = "Kotlin expression or statement to execute").required()
+    private val scriptArgs by argument(name = "ARGS", help = "Arguments forwarded to the script").multiple()
 
     override fun run() {
         val result = ScriptRunner().runInline(

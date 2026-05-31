@@ -9,20 +9,24 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * 长度前缀帧编解码：4 字节 big-endian 长度 + payload。
+ * Length-prefixed frame codec: 4-byte big-endian length followed by payload.
  *
- * 选择背景：选 length-prefix 而非 protobuf 自带的 delimited 是因为后者
- * 用 varint 长度，对偶发损坏数据没自描述长度好诊断。4 字节长度上限 4GB
- * 远超实际请求大小（脚本源码顶多几十 KB），头加进去一行成本，不引第三方
- * 库（grpc / netty 都过重）。
+ * Why length-prefix over protobuf's own delimited form: protobuf delimited
+ * uses a varint length, which is harder to diagnose against occasional data
+ * corruption than a self-describing fixed length. The 4-byte length caps at
+ * 4 GB, far above any realistic request (script sources are at most a few
+ * dozen KB), and the header costs us essentially one line of code with no
+ * third-party dependency (grpc / netty are far too heavy).
  *
- * 安全上限：[MAX_FRAME_BYTES] 拒收超过 32MB 的帧，防止恶意客户端 OOM。
+ * Safety cap: [MAX_FRAME_BYTES] rejects frames larger than 32 MB to prevent
+ * a malicious client from OOM-ing the server.
  */
 object Frames {
     private const val MAX_FRAME_BYTES = 32 * 1024 * 1024
 
     /**
-     * 读一个完整帧并交给 [parser] 解析。流被关闭或读到 EOF 时返回 null。
+     * Reads a single frame and parses it via [parser]. Returns null if the
+     * stream is closed or hits EOF.
      */
     fun <T : MessageLite> read(input: InputStream, parser: Parser<T>): T? {
         val din = DataInputStream(input)
@@ -31,7 +35,7 @@ object Frames {
         } catch (e: EOFException) {
             return null
         }
-        require(length in 0..MAX_FRAME_BYTES) { "帧长度异常：$length（上限 $MAX_FRAME_BYTES）" }
+        require(length in 0..MAX_FRAME_BYTES) { "invalid frame length: $length (max $MAX_FRAME_BYTES)" }
         val buf = ByteArray(length)
         din.readFully(buf)
         return parser.parseFrom(buf)
@@ -46,5 +50,6 @@ object Frames {
     }
 }
 
-/** 当前协议版本，CLI / daemon 不一致时拒绝服务，让客户端杀掉旧 daemon 重启新版本。 */
+/** Current protocol version. When CLI and daemon disagree the daemon refuses
+ *  service, prompting the client to kill the old daemon and start a new one. */
 const val PROTOCOL_VERSION: Int = 1

@@ -19,14 +19,16 @@ import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromT
 import kotlin.script.experimental.jvmhost.createJvmEvaluationConfigurationFromTemplate
 
 /**
- * 编译并执行一个 .kts / .main.kts 脚本。
+ * Compiles and executes a `.kts` / `.main.kts` script.
  *
- * 缓存目录通过系统属性传给 [MainKtsHostConfiguration]，让 main-kts 内置的
- * [kotlin.script.experimental.jvm.CompiledScriptJarsCache] 把编译产物落到
- * `~/.cache/ktx/compiled/`（XDG 规范，回退 `~/.cache/ktx/compiled/`）。
+ * The cache directory is passed to [MainKtsHostConfiguration] via system property,
+ * so main-kts's built-in [kotlin.script.experimental.jvm.CompiledScriptJarsCache]
+ * writes compiled artifacts into `~/.cache/ktx/compiled/` (XDG spec, falls back
+ * to `~/.cache/ktx/compiled/`).
  *
- * 注意：这里不主动 unset 系统属性。CLI 整个进程生命周期就一份属性值，
- * 反复 set 是幂等的；后续 daemon 化后由 daemon 启动时 set 一次即可。
+ * Note: we don't unset the system property. The CLI process holds a single value
+ * for its lifetime, and repeated sets are idempotent. Once daemonized, the daemon
+ * sets it once at startup.
  */
 class ScriptRunner(
     private val cacheDir: Path = defaultCacheDir(),
@@ -36,19 +38,19 @@ class ScriptRunner(
 
     init {
         cacheDir.toFile().mkdirs()
-        // main-kts 读这个 system property 决定缓存目录，见
-        // org.jetbrains.kotlin.mainKts.MainKtsHostConfiguration。
+        // main-kts reads this system property to decide the cache directory; see
+        // org.jetbrains.kotlin.mainKts.MainKtsHostConfiguration.
         System.setProperty(MAIN_KTS_CACHE_DIR_PROPERTY, cacheDir.toAbsolutePath().toString())
     }
 
     /**
-     * 跑指定脚本文件。
+     * Run a script file.
      *
-     * @param scriptPath 脚本路径，可以是 `.kts` 或 `.main.kts`。
-     * @param scriptArgs 透传给脚本的参数（脚本里通过构造器形参 `args` 拿到）。
-     * @param resolver 可选的依赖 resolver；不传则用 main-kts 默认（联网）。
-     * @param bypassCompiledCache 跳过编译产物缓存（lock 时必须为 true，否则
-     *                            缓存命中会让 RecordingResolver 拿不到记录）。
+     * @param scriptPath script path; can be `.kts` or `.main.kts`.
+     * @param scriptArgs arguments forwarded to the script (received via the constructor parameter `args`).
+     * @param resolver optional dependency resolver; defaults to main-kts's network-backed one if null.
+     * @param bypassCompiledCache skip the compiled-artifact cache (must be true during lock,
+     *                            otherwise a cache hit prevents RecordingResolver from observing resolutions).
      */
     fun run(
         scriptPath: Path,
@@ -57,17 +59,17 @@ class ScriptRunner(
         bypassCompiledCache: Boolean = false,
     ): ResultWithDiagnostics<EvaluationResult> {
         val scriptFile = scriptPath.absolute().toFile().also {
-            require(it.isFile) { "脚本不存在：${it.absolutePath}" }
+            require(it.isFile) { "script not found: ${it.absolutePath}" }
         }
         log.debug("running {} ({} bytes)", scriptFile.absolutePath, scriptFile.length())
         return evaluate(scriptFile.toScriptSource(), scriptArgs, resolver, bypassCompiledCache)
     }
 
     /**
-     * 跑一段内联脚本源码（用于 `kts -e` 与 `kts run -` stdin）。
+     * Run an inline script source (for `kts -e` and `kts run -` over stdin).
      *
-     * @param source 完整脚本源码。
-     * @param virtualName 用于诊断输出的虚拟文件名，例如 `<eval>` 或 `<stdin>`。
+     * @param source full script source.
+     * @param virtualName virtual file name shown in diagnostics, e.g. `<eval>` or `<stdin>`.
      */
     fun runInline(
         source: String,
@@ -86,18 +88,21 @@ class ScriptRunner(
         resolver: ExternalDependenciesResolver?,
         bypassCompiledCache: Boolean,
     ): ResultWithDiagnostics<EvaluationResult> = withResolverOverride(resolver) {
-        // resolverOverride ThreadLocal 必须在 createJvmCompilationConfigurationFromTemplate
-        // 调用之前生效 —— 模板里的 ScriptCompilationConfiguration { ... } 块在
-        // 此时实例化，KtsScriptDefinition 会读取 ThreadLocal。
+        // The resolverOverride ThreadLocal must be set BEFORE
+        // createJvmCompilationConfigurationFromTemplate runs — the
+        // ScriptCompilationConfiguration { ... } block in the template is
+        // instantiated at that point, and KtsScriptDefinition reads the ThreadLocal then.
         //
-        // bypassCompiledCache：临时把 system property 切到一个不存在的 tmp
-        // 目录（一次性、按 nanoTime 命名）。MainKtsHostConfiguration 启动时
-        // 读这个 property，命中条件「目录存在」即用作缓存；把它指到一个不
-        // 存在的目录就可关闭缓存写入并强制重编译。lock 走完后立即恢复。
+        // bypassCompiledCache: temporarily redirect the system property to a
+        // non-existent tmp directory (one-shot, named by nanoTime).
+        // MainKtsHostConfiguration reads this property at startup and treats
+        // "directory exists" as the cache-hit precondition; pointing it at a
+        // non-existent path disables cache writes and forces recompilation.
+        // Restored immediately after lock completes.
         val origCacheDir = System.getProperty(MAIN_KTS_CACHE_DIR_PROPERTY)
         if (bypassCompiledCache) {
-            // 设为空字符串：MainKtsHostConfiguration 处理逻辑里
-            //   `cacheExtSetting.isBlank() -> null` 直接禁用缓存。
+            // Set to empty: MainKtsHostConfiguration's logic
+            //   `cacheExtSetting.isBlank() -> null` disables the cache outright.
             System.setProperty(MAIN_KTS_CACHE_DIR_PROPERTY, "")
         }
         try {
@@ -118,7 +123,7 @@ class ScriptRunner(
     companion object {
         private const val MAIN_KTS_CACHE_DIR_PROPERTY = "kotlin.main.kts.compiled.scripts.cache.dir"
 
-        /** XDG 规范：`$XDG_CACHE_HOME/ktx/compiled/`，回退 `$HOME/.cache/ktx/compiled/`。 */
+        /** XDG spec: `$XDG_CACHE_HOME/ktx/compiled/`, falls back to `$HOME/.cache/ktx/compiled/`. */
         fun defaultCacheDir(): Path {
             val xdg = System.getenv("XDG_CACHE_HOME")?.takeIf { it.isNotBlank() }
             val base = if (xdg != null) File(xdg) else File(System.getProperty("user.home"), ".cache")
@@ -128,8 +133,8 @@ class ScriptRunner(
 }
 
 /**
- * 把诊断输出写到合适的流：ERROR 走 stderr，其余走 stdout。
- * DEBUG 级别噪音过大（main-kts 会打印 jdk module 加载列表），过滤掉。
+ * Routes diagnostic output to the right stream: ERROR goes to stderr, others to stdout.
+ * DEBUG is too noisy (main-kts prints the JDK module load list) so it's filtered out.
  */
 fun ResultWithDiagnostics<*>.printReports() {
     reports.forEach { report ->

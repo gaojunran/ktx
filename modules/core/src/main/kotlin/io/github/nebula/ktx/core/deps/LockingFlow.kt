@@ -13,22 +13,24 @@ import kotlin.script.experimental.dependencies.FileSystemDependenciesResolver
 import kotlin.script.experimental.dependencies.maven.MavenDependenciesResolver
 
 /**
- * 把「正常 run + 旁路记录解析结果」与「写 lockfile」组合成一个动作。
+ * Combines "normal run + observe resolution side-effects" with "write lockfile"
+ * into a single action.
  *
- * 是 `ktx lock` 与 `ktx run`（生成/刷新 lockfile）共享的工作流。
+ * Shared workflow between `ktx lock` and `ktx run` (which generates/refreshes the lockfile).
  */
 object LockingFlow {
 
     private val log = LoggerFactory.getLogger("ktx.lock")
 
     /**
-     * 跑一遍 [scriptPath]，过程中把 main-kts 的依赖解析旁路记录下来，结束后
-     * 把记录写到 `<scriptPath>.lock`。
+     * Run [scriptPath] once while observing main-kts's dependency resolution,
+     * then write the recorded info to `<scriptPath>.lock`.
      *
-     * @param runner 复用 CLI 创建的 ScriptRunner（保持缓存目录一致）。
-     * @param skipExecution 仅做编译（含依赖解析），不真正执行脚本主体。
-     *                     `kts lock` 用 true：用户只想刷新 lockfile，没必要
-     *                     真的发 HTTP 请求。
+     * @param runner reuses the CLI's ScriptRunner (keeps the cache directory consistent).
+     * @param skipExecution compile only (including dependency resolution); don't
+     *                      execute the script body. `kts lock` passes true: the
+     *                      user just wants to refresh the lockfile, no need to
+     *                      actually fire HTTP requests.
      */
     fun lockAndOptionallyRun(
         runner: ScriptRunner,
@@ -41,14 +43,16 @@ object LockingFlow {
         val source = finalPath.readBytes()
         val scriptHash = sha256Hex(source)
 
-        // skipExecution 模式：把脚本主体替换成 `Unit`，仅保留 `@file:` 头部
-        // 注解触发 main-kts 的依赖解析；同时为了**绕过编译产物缓存**（缓存
-        // 命中时 main-kts 不再调 resolver，RecordingResolver 拿不到记录），
-        // 用一个临时 cache dir 跑这一次。
+        // skipExecution mode: replace the script body with `Unit`, keeping
+        // only the `@file:` header so main-kts still triggers dependency
+        // resolution. Also, to **bypass the compiled-artifact cache** (a cache
+        // hit would skip the resolver entirely, leaving RecordingResolver with
+        // nothing), use a temporary cache dir for this single run.
         //
-        // 这是 `kts lock` 的核心折中：lock 操作本身要付一次完整编译时间，
-        // 换来精确的依赖记录与零脚本副作用。后续 `kts run --frozen` 命中
-        // 主缓存目录的产物，照常秒过。
+        // This is `kts lock`'s core trade-off: the lock operation pays one
+        // full compile, in exchange for accurate dependency tracking and zero
+        // script side-effects. Subsequent `kts run --frozen` invocations hit
+        // the main cache and remain instant.
         val result = if (skipExecution) {
             val wrapped = wrapForLockOnly(source.decodeToString())
             runner.runInline(
@@ -62,11 +66,12 @@ object LockingFlow {
             runner.run(finalPath, scriptArgs, resolver = recording)
         }
 
-        // 不论编译成功失败都尝试写 lockfile：失败时也许只解析到了一部分依赖，
-        // 但部分胜过没有；用户可以再跑一次。
+        // Always try to write the lockfile, regardless of compile success or
+        // failure: a failed compile may have resolved a partial set of deps,
+        // and partial info beats nothing. The user can re-run.
         val directs = recording.snapshot().mapValues { (_, files) ->
             files.mapNotNull { f -> FrozenResolver.toM2Relative(f).also { rel ->
-                if (rel == null) log.warn("依赖 jar 不在 ~/.m2/repository 之下，lockfile 跳过：{}", f.absolutePath)
+                if (rel == null) log.warn("dependency jar is not under ~/.m2/repository, skipping in lockfile: {}", f.absolutePath)
             } }
         }.filterValues { it.isNotEmpty() }
 
@@ -78,24 +83,26 @@ object LockingFlow {
             )
             val lockPath = Lockfile.pathFor(finalPath)
             lockfile.write(lockPath)
-            log.info("已写入 lockfile：{}（{} 个顶层依赖）", lockPath, directs.size)
+            log.info("wrote lockfile: {} ({} top-level deps)", lockPath, directs.size)
         } else {
-            log.info("脚本无 Maven 依赖，跳过 lockfile 写入")
+            log.info("no Maven deps in script; skipping lockfile write")
         }
 
         return result
     }
 
     /**
-     * 把脚本头部注解保留下来，但把脚本主体替换成 no-op，用于 `kts lock`。
+     * Strip the script body but keep header annotations, used by `kts lock`.
      *
-     * 思路：找到「脚本主体开始」的位置（ToolchainHeaderScanner 的等价逻辑），
-     * 把后面的代码替换成 `Unit`。这样 main-kts 仍会走依赖解析，但不会执行
-     * 脚本副作用（如发 HTTP 请求）。
+     * Strategy: locate the start of the script body (logic equivalent to
+     * ToolchainHeaderScanner) and replace everything from there with `Unit`.
+     * main-kts still goes through dependency resolution, but the script's
+     * side effects (e.g. HTTP requests) don't fire.
      *
-     * Phase 1.2 用最朴素的实现：找第一个非 `#!` / 非空 / 非 `//` / 非 `@file:`
-     * 的行，从那里截断换成 `Unit`。失败时回退到不截断（让脚本完整执行，慢
-     * 但安全）。
+     * Phase 1.2 uses the most naive implementation: find the first non-`#!`,
+     * non-blank, non-`//`, non-`@file:` line and truncate from there to `Unit`.
+     * On failure, fall back to no truncation (full script execution — slower
+     * but safe).
      */
     private fun wrapForLockOnly(source: String): String {
         val lines = source.lines()
@@ -106,7 +113,7 @@ object LockingFlow {
             if (line.startsWith("#!")) continue
             if (line.startsWith("//")) continue
             if (line.startsWith("@file:")) continue
-            // 块注释、import 等都视作脚本主体开始。
+            // Block comments, imports, etc. all count as the start of the script body.
             headEnd = idx
             break
         }
@@ -114,8 +121,9 @@ object LockingFlow {
     }
 
     /**
-     * 重建 main-kts 默认 resolver 链：`Compound(FileSystem, Maven)`。
-     * 我们必须自己拼，因为 [MainKtsConfigurator] 把默认 resolver 私有化了。
+     * Reconstruct main-kts's default resolver chain: `Compound(FileSystem, Maven)`.
+     * We have to assemble this manually because [MainKtsConfigurator] keeps
+     * its default resolver private.
      */
     fun defaultRealResolver(): CompoundDependenciesResolver =
         CompoundDependenciesResolver(FileSystemDependenciesResolver(), MavenDependenciesResolver())
@@ -126,5 +134,5 @@ object LockingFlow {
     }
 }
 
-/** 兼容辅助：把 ResultWithDiagnostics 直接打印一遍诊断。 */
+/** Compatibility helper: prints the diagnostics on a ResultWithDiagnostics in one call. */
 fun ResultWithDiagnostics<EvaluationResult>.printAll() = printReports()

@@ -10,25 +10,29 @@ import java.util.jar.JarOutputStream
 import java.util.jar.Manifest
 
 /**
- * 把脚本编译产物 jar + 一组运行时 jar 合并成一个 fat jar。
+ * Merge a script's compiled jar plus a set of runtime jars into a single fat jar.
  *
- * 合并策略：
- *   - 普通类文件（`*.class`）：先到先得，重复 entry 跳过并 log warn。
- *     `inputs` 顺序决定优先级 —— 脚本产物放最前。
- *   - `META-INF/MANIFEST.MF`：丢弃所有源文件的 manifest，按 [mainClass] 重写。
- *   - `META-INF/services/...`：累加合并 —— 这是 ServiceLoader 约定，多个
- *     提供者要保留。同 service 文件出现多次时，把每份内容用换行拼接。
- *   - `module-info.class`：直接跳过。fat jar 走 classpath 路径，模块信息无意义
- *     且会因 split package 报错。
- *   - `META-INF/<vendor>/...` 等其他 metadata：先到先得。
- *   - 多 release jar 的 `META-INF/versions/N/...`：按普通文件先到先得处理；
- *     绝大多数库不用这个特性，需要时再做精细化。
+ * Merge strategy:
+ *   - regular class files (`*.class`): first writer wins; duplicates are skipped
+ *     and a warning is logged. `inputs` order determines priority — script
+ *     output goes first.
+ *   - `META-INF/MANIFEST.MF`: discard manifests from all inputs and rewrite
+ *     based on [mainClass].
+ *   - `META-INF/services/...`: concatenated — this is the ServiceLoader contract,
+ *     multiple providers must be preserved. When the same service file appears
+ *     in several inputs, contents are joined with newlines.
+ *   - `module-info.class`: dropped. The fat jar runs through the classpath, so
+ *     module info is meaningless and will trip split-package errors.
+ *   - other metadata under `META-INF/<vendor>/...`: first writer wins.
+ *   - multi-release jar `META-INF/versions/N/...`: handled like regular files
+ *     (first wins). Most libs don't use this; we'll refine if it ever matters.
  *
- * 不做的事：
- *   - 不 relocate（不像 shadow jar 那样重命名包）—— 这里所有依赖已经是
- *     embeddable 风味（用户自己声明的 maven 依赖正常包路径），不会和编译器
- *     冲突，因为编译器不在 fat jar 里。
- *   - 不压缩到极致（dexopt 之类）—— stdlib + 用户依赖已经是 deflate 过的 jar。
+ * Things we don't do:
+ *   - no relocation (we don't rename packages like shadow jar) — every dep here
+ *     is an embeddable build (the user's plain Maven deps), so there's no
+ *     conflict with the compiler since the compiler isn't shipped in the fat jar.
+ *   - no aggressive compression (e.g. dexopt) — stdlib + user deps are already
+ *     deflated jars.
  */
 class JarPacker(
     private val mainClass: String,
@@ -48,11 +52,11 @@ class JarPacker(
                         }
                     }
                 }
-                // 收尾写出 services 累加结果
+                // Final pass: emit accumulated services contents.
                 writeServices(jout, services)
             }
         }
-        log.info("打包完成：{}（{} entries）", output, seenEntries.size + services.size)
+        log.info("packaged: {} ({} entries)", output, seenEntries.size + services.size)
     }
 
     private fun buildManifest(): Manifest = Manifest().apply {
@@ -70,9 +74,9 @@ class JarPacker(
     ) {
         val name = entry.name
         when {
-            entry.isDirectory -> Unit  // 跳过目录，writeJarEntry 会按需创建父目录
-            name == "META-INF/MANIFEST.MF" -> Unit  // 丢弃，重写
-            name == "module-info.class" -> Unit  // fat jar 不要模块描述
+            entry.isDirectory -> Unit  // skip directories; writeJarEntry creates parents on demand
+            name == "META-INF/MANIFEST.MF" -> Unit  // drop, will be rewritten
+            name == "module-info.class" -> Unit  // fat jar doesn't want a module descriptor
             name.startsWith("META-INF/versions/") && name.endsWith("/module-info.class") -> Unit
             name.startsWith("META-INF/services/") -> {
                 val content = jar.getInputStream(entry).use { it.readBytes() }
@@ -85,8 +89,9 @@ class JarPacker(
                     jar.getInputStream(entry).use { it.copyTo(jout) }
                     jout.closeEntry()
                 }
-                // 重复 entry 静默跳过 —— jar 库 split package 会很常见，
-                // log 会刷屏。需要诊断时打开 DEBUG 级别。
+                // Duplicate entries are silently dropped — split packages
+                // across jar libraries are common and a log line per dup
+                // would flood the output. Enable DEBUG to investigate.
             }
         }
     }
@@ -101,8 +106,9 @@ class JarPacker(
 
     companion object {
         /**
-         * 直接拷贝整个 jar 内容到一个 [OutputStream]（用于「不需要合并、只需
-         * 单个 jar 重写 manifest」场景）。当前未用，保留作未来扩展。
+         * Copy a jar's full contents to an [OutputStream] (for "no merging,
+         * just rewrite the manifest of one jar" use cases). Currently unused;
+         * kept for future extensions.
          */
         fun copyJarStripManifest(input: Path, output: OutputStream) {
             JarFile(input.toFile()).use { jar ->

@@ -14,24 +14,25 @@ import kotlin.system.exitProcess
 /**
  * `ktx lock <script>`
  *
- * 解析脚本依赖、把结果落到 `<script>.lock`。脚本主体不会被执行 ——
- * 头部 `@file:` 注解保留，主体替换成 `Unit`，目的是只跑依赖解析。
+ * Resolve the script's dependencies and write the result to `<script>.lock`.
+ * The script body is not executed. Header `@file:` annotations are kept,
+ * but the body is replaced with `Unit` so only dependency resolution runs.
  *
- * 工作流：
- *   1. 用 [LockingFlow.lockAndOptionallyRun] 走一遍编译；
- *   2. RecordingResolver 旁路记录解析结果；
- *   3. 完成后写 lockfile，路径与脚本同目录、加 `.lock` 后缀。
+ * Workflow:
+ *   1. Drive a single compile through [LockingFlow.lockAndOptionallyRun];
+ *   2. RecordingResolver records the resolved dependencies as a side channel;
+ *   3. Write the lockfile next to the script with a `.lock` suffix.
  */
 class LockCommand : CliktCommand(name = "lock") {
 
     private val scriptArg by argument(
         name = "SCRIPT",
-        help = "脚本路径",
+        help = "Script path",
     )
 
     override fun run() {
         val path = Path(scriptArg)
-        require(path.exists() && path.isRegularFile()) { "脚本不存在：$scriptArg" }
+        require(path.exists() && path.isRegularFile()) { "script not found: $scriptArg" }
 
         val runner = ScriptRunner()
         val result = LockingFlow.lockAndOptionallyRun(

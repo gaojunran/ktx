@@ -17,18 +17,19 @@ import io.github.nebula.ktx.cli.command.ToolchainListCommand
 import io.github.nebula.ktx.cli.command.ToolchainPathCommand
 
 /**
- * `ktx` CLI 入口。
+ * `ktx` CLI entry point.
  *
- * 行为约定（参考 uv / bun）：
- *   - `ktx run <script> [args...]` 显式 run 子命令；
- *   - `ktx <script> [args...]` 当第一个参数是已存在的文件或为 `-` 时，
- *     等价于 `ktx run <script> [args...]`；
- *   - `ktx -e "<expr>"` 求值一段表达式；
- *   - `ktx --help` / `ktx <subcommand> --help` 标准帮助。
+ * Behavior (modeled after uv / bun):
+ *   - `ktx run <script> [args...]` explicit run subcommand;
+ *   - `ktx <script> [args...]` when the first argument is an existing file or `-`,
+ *     this is equivalent to `ktx run <script> [args...]`;
+ *   - `ktx -e "<expr>"` evaluates an expression;
+ *   - `ktx --help` / `ktx <subcommand> --help` standard help.
  *
- * 默认子命令的实现没有依赖 clikt 私有钩子：在交给 clikt 解析前，
- * 我们先看 argv[0]，命中「是脚本」就把它前面塞个 `run`。这样 clikt
- * 的子命令分发逻辑保持纯粹，不需要 hack `invokedSubcommand`。
+ * The default subcommand is implemented without relying on clikt internals:
+ * we inspect argv[0] before handing off to clikt, and prepend `run` when it
+ * looks like a script. This keeps clikt's subcommand dispatch logic clean
+ * without hacking `invokedSubcommand`.
  */
 class KtxCommand : CliktCommand(name = "ktx") {
     override fun run() = Unit
@@ -47,12 +48,14 @@ fun main(rawArgs: Array<String>) {
 }
 
 /**
- * 没有显式子命令、且第一个参数像是脚本入参时，自动注入 `run`。
+ * Inject `run` automatically when there's no explicit subcommand and the first
+ * argument looks like a script.
  *
- * 「像是脚本」的判断比较保守，避免把用户未来加的子命令名误当脚本：
- *   - `-` 是 stdin 哨兵；
- *   - 看着像选项（以 `-` 开头）：交给 clikt 自己处理；
- *   - 否则要求文件存在 —— 不存在就让 clikt 报「Unknown command」。
+ * The "looks like a script" check is conservative to avoid mistaking future
+ * subcommand names as scripts:
+ *   - `-` is the stdin sentinel;
+ *   - looks like an option (starts with `-`): let clikt handle it;
+ *   - otherwise the file must exist; if not, let clikt report "Unknown command".
  */
 private fun normalizeArgs(args: Array<String>): Array<String> {
     if (args.isEmpty()) return args
@@ -63,8 +66,9 @@ private fun normalizeArgs(args: Array<String>): Array<String> {
     if (first.startsWith("-")) return args  // --help / -h
     val knownSubcommands = setOf("run", "eval", "lock", "add", "compile", "toolchain", "daemon")
     if (first in knownSubcommands) return args
-    // 当作脚本路径：存在就注入 run。不存在则交给 clikt 报未知命令，
-    // 出来的错误更准确（"Got unexpected extra argument" 之流）。
+    // Treat as a script path: inject `run` if it exists. Otherwise let clikt
+    // report unknown command, which gives a more accurate error message
+    // ("Got unexpected extra argument" and friends).
     if (java.io.File(first).isFile) return arrayOf("run") + args
     return args
 }

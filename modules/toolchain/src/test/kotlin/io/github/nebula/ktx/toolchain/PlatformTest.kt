@@ -9,7 +9,7 @@ class PlatformTest {
     @Test
     fun `current detects something sensible`() {
         val p = Platform.current()
-        // 主要确保不会抛 —— 至少一个枚举值匹配本机
+        // Mainly assert that this doesn't throw — at least one enum value matches the host
         assertTrue(p.os in Platform.Os.entries)
         assertTrue(p.arch in Platform.Arch.entries)
     }

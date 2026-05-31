@@ -18,29 +18,31 @@ import kotlin.system.exitProcess
 /**
  * `ktx add <coord> <script>`
  *
- * 在脚本顶部插入一行 `@file:DependsOn("coord")`，然后刷新 lockfile。
+ * Insert a new `@file:DependsOn("coord")` line at the top of the script,
+ * then refresh the lockfile.
  *
- * 插入位置：紧跟在 shebang 之后、其他 `@file:` 注解之间（最末尾）。
- * 不做存在性去重 —— 用户重复 `add` 同一坐标会得到两条 `@file:DependsOn`，
- * 编译器会自然合并；保持简单胜过精巧。
+ * Insertion point: right after the shebang, alongside other `@file:`
+ * annotations (at the end of that block). No deduplication: if the user
+ * adds the same coordinate twice, two `@file:DependsOn` lines result and
+ * the compiler merges them naturally; simplicity beats cleverness here.
  */
 class AddCommand : CliktCommand(name = "add") {
 
-    private val coordArg by argument(name = "COORDINATES", help = "Maven 坐标，如 io.ktor:ktor-client-core-jvm:3.2.0")
-    private val scriptArg by argument(name = "SCRIPT", help = "脚本路径")
-    private val skipLock by option("--no-lock", help = "仅修改脚本，不刷新 lockfile").flag()
+    private val coordArg by argument(name = "COORDINATES", help = "Maven coordinates, e.g. io.ktor:ktor-client-core-jvm:3.2.0")
+    private val scriptArg by argument(name = "SCRIPT", help = "Script path")
+    private val skipLock by option("--no-lock", help = "Edit the script only; skip lockfile refresh").flag()
 
     override fun run() {
         val path = Path(scriptArg)
-        require(path.exists() && path.isRegularFile()) { "脚本不存在：$scriptArg" }
+        require(path.exists() && path.isRegularFile()) { "script not found: $scriptArg" }
 
         val original = path.readText()
         val updated = insertDependsOn(original, coordArg)
         if (updated == original) {
-            echo("脚本未变化（坐标已存在）")
+            echo("script unchanged (coordinate already present)")
         } else {
             path.writeText(updated)
-            echo("已添加 @file:DependsOn(\"$coordArg\") 到 ${path.fileName}")
+            echo("added @file:DependsOn(\"$coordArg\") to ${path.fileName}")
         }
 
         if (skipLock) return
@@ -57,15 +59,18 @@ class AddCommand : CliktCommand(name = "add") {
     }
 
     /**
-     * 把 `@file:DependsOn("coord")` 插到脚本头部 `@file:` 区块的末尾。
+     * Insert `@file:DependsOn("coord")` at the end of the script's `@file:`
+     * header block.
      *
-     * 处理规则：
-     *   - shebang 永远保留在第一行；
-     *   - 在第一个 shebang 之后、连续的 `@file:` / 空行 / `//` 行注释 之内
-     *     找到最后一个 `@file:` 的位置，紧随其后插入；
-     *   - 没有任何 `@file:` 注解时，插到 shebang 之后（或文件最开头）。
+     * Rules:
+     *   - the shebang stays on the first line;
+     *   - within the contiguous run of `@file:` / blank / `//` lines after
+     *     the shebang, find the last `@file:` and insert just after it;
+     *   - if no `@file:` annotation exists yet, insert after the shebang
+     *     (or at the start of the file).
      *
-     * 重复检测：若同坐标已存在于 `@file:DependsOn` 中，返回原文不变。
+     * Dedup: if the same coordinate already appears in a `@file:DependsOn`,
+     * the original text is returned unchanged.
      */
     private fun insertDependsOn(source: String, coord: String): String {
         val newAnnot = "@file:DependsOn(\"$coord\")"
@@ -75,14 +80,14 @@ class AddCommand : CliktCommand(name = "add") {
         var insertAt = 0
         if (lines.isNotEmpty() && lines[0].startsWith("#!")) insertAt = 1
 
-        // 在 head 区域内找最后一个 @file: 行
+        // Find the last @file: line within the header section.
         var lastFileLine = -1
         var i = insertAt
         while (i < lines.size) {
             val l = lines[i].trim()
             when {
-                l.isEmpty() -> { /* 接受空行 */ }
-                l.startsWith("//") -> { /* 接受行注释 */ }
+                l.isEmpty() -> { /* accept blank lines */ }
+                l.startsWith("//") -> { /* accept line comments */ }
                 l.startsWith("@file:") -> lastFileLine = i
                 else -> break
             }

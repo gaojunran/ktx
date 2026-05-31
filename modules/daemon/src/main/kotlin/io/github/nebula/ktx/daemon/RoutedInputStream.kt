@@ -3,12 +3,14 @@ package io.github.nebula.ktx.daemon
 import java.io.InputStream
 
 /**
- * 进程级 [InputStream] 但内部按当前线程查 ThreadLocal 源。
+ * Process-wide [InputStream] that internally dispatches to a per-thread
+ * source via ThreadLocal.
  *
- * 与 [RoutedOutputStream] 同思路：daemon 启动时一次性 [System.setIn] 一个
- * Routed 实例；每个 worker 线程进入 handleRun 时 [bind] 自己脚本的
- * stdin（通常是 PipedInputStream），离开时 [unbind]。没 bind 的线程
- * 走 [fallback]（默认空流，相当于 /dev/null）。
+ * Same idea as [RoutedOutputStream]: at daemon startup, [System.setIn] a
+ * single Routed instance. Each worker thread entering handleRun [bind]s the
+ * stdin for its own script (typically a PipedInputStream) and [unbind]s on
+ * exit. Threads without a binding read from [fallback] (default: the empty
+ * stream, equivalent to /dev/null).
  */
 class RoutedInputStream(
     private val fallback: InputStream = InputStream.nullInputStream(),
@@ -30,6 +32,6 @@ class RoutedInputStream(
     override fun read(b: ByteArray, off: Int, len: Int): Int = current().read(b, off, len)
     override fun available(): Int = current().available()
     override fun close() {
-        // 进程级 System.in 不应被 close
+        // The process-wide System.in must not be closed.
     }
 }

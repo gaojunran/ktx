@@ -1,11 +1,11 @@
 package io.github.nebula.ktx.toolchain
 
 /**
- * 当前进程所在的 OS + CPU 架构，用 Adoptium API 的命名约定。
+ * Current process's OS + CPU architecture, using Adoptium API naming.
  *
- * Adoptium 的取值范围：
- *   - os: `mac` / `linux` / `windows` / `aix` / `solaris`（我们只支持前三）
- *   - architecture: `x64` / `aarch64` / `arm` / `ppc64` 等
+ * Adoptium's value space:
+ *   - os: `mac` / `linux` / `windows` / `aix` / `solaris` (we only support the first three)
+ *   - architecture: `x64` / `aarch64` / `arm` / `ppc64`, and so on
  */
 data class Platform(
     val os: Os,
@@ -23,21 +23,21 @@ data class Platform(
         AARCH64("aarch64"),
     }
 
-    /** 解压后 `bin/java` 的相对路径（macOS 多一层 Contents/Home）。 */
+    /** Relative path to `bin/java` after extraction (macOS adds an extra Contents/Home layer). */
     fun javaBinRelative(): String = when (os) {
         Os.MAC -> "Contents/Home/bin/java"
         Os.WINDOWS -> "bin\\java.exe"
         Os.LINUX -> "bin/java"
     }
 
-    /** 下载产物文件名后缀，用于决定解压方式。 */
+    /** Download artifact filename suffix; determines how to extract. */
     val archiveSuffix: String
         get() = if (os == Os.WINDOWS) ".zip" else ".tar.gz"
 
     companion object {
         /**
-         * 检测当前 JVM 所在平台。基于 `os.name` / `os.arch` 系统属性，
-         * 不依赖任何 native 调用。
+         * Detects the platform of the current JVM. Based on the `os.name` /
+         * `os.arch` system properties, no native calls.
          */
         fun current(): Platform {
             val osName = System.getProperty("os.name").lowercase()
@@ -46,12 +46,12 @@ data class Platform(
                 osName.contains("mac") || osName.contains("darwin") -> Os.MAC
                 osName.contains("win") -> Os.WINDOWS
                 osName.contains("linux") -> Os.LINUX
-                else -> error("不支持的 OS: $osName")
+                else -> error("unsupported OS: $osName")
             }
             val arch = when (osArch) {
                 "aarch64", "arm64" -> Arch.AARCH64
                 "x86_64", "amd64", "x64" -> Arch.X64
-                else -> error("不支持的 CPU 架构: $osArch")
+                else -> error("unsupported CPU architecture: $osArch")
             }
             return Platform(os, arch)
         }

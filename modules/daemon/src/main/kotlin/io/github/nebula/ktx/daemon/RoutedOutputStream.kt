@@ -4,15 +4,19 @@ import java.io.OutputStream
 import java.io.PrintStream
 
 /**
- * 进程级 [PrintStream] 但内部按当前线程查 ThreadLocal sink。
+ * Process-wide [PrintStream] that internally dispatches to a per-thread sink
+ * via ThreadLocal.
  *
- * 用途：daemon 并发跑多个脚本时，每个 worker 线程要把 println 写到「自己
- * 那条 socket」上。直接 [System.setOut] 会被多线程互相覆盖，写错地方。
+ * Why: when the daemon runs multiple scripts concurrently, each worker
+ * thread must direct its println output to "its own" socket. A plain
+ * [System.setOut] would let threads clobber each other and write to the
+ * wrong place.
  *
- * 用法：daemon 启动时一次性 set 一对 [Routed] PrintStream 到 System.out /
- * System.err；每个 worker 线程进入时 [bind] 自己的 sink，离开时 [unbind]。
- * 没 bind 的线程（例如 daemon 自己的 logback、accept-loop）走 [fallback]
- * sink，通常指向真正的进程 stdout（或 /dev/null）。
+ * Usage: at daemon startup, install a pair of [Routed] PrintStreams as
+ * System.out / System.err once. Each worker thread [bind]s its own sink on
+ * entry and [unbind]s on exit. Threads without a binding (e.g. the daemon's
+ * own logback, accept-loop) write to the [fallback] sink, typically the
+ * actual process stdout (or /dev/null).
  */
 class RoutedOutputStream(
     private val fallback: OutputStream,
@@ -34,6 +38,6 @@ class RoutedOutputStream(
     override fun write(b: ByteArray, off: Int, len: Int) = current().write(b, off, len)
     override fun flush() = current().flush()
     override fun close() {
-        // 显式 close 进程级 PrintStream 不合理，忽略
+        // Explicitly closing a process-wide PrintStream is wrong; ignore.
     }
 }

@@ -13,10 +13,10 @@ import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.readText
 
 /**
- * `ktx daemon` 子命令组。
+ * `ktx daemon` subcommand group.
  *
- * status / stop 默认作用在「当前 JVM 主版本对应的 daemon」上，可用 --jdk
- * 指定其他主版本。`stop --all` 关掉所有 daemon。
+ * status / stop default to the daemon for the current JVM major version;
+ * use --jdk to target another major. `stop --all` stops every daemon.
  */
 class DaemonCommand : CliktCommand(name = "daemon") {
     override fun run() = Unit
@@ -24,19 +24,19 @@ class DaemonCommand : CliktCommand(name = "daemon") {
 
 class DaemonStatusCommand : CliktCommand(name = "status") {
 
-    private val all by option("--all", help = "列出所有 daemon").flag()
-    private val jdkOption by option("--jdk", help = "指定 JDK 主版本（默认当前）").int()
+    private val all by option("--all", help = "List every daemon").flag()
+    private val jdkOption by option("--jdk", help = "Target JDK major version (default: current)").int()
 
     override fun run() {
         if (all) {
             val root = DaemonPaths.defaultDaemonDir()
             if (!root.exists() || !root.isDirectory()) {
-                echo("（无 daemon 目录）")
+                echo("(no daemon directory)")
                 return
             }
             val instances = root.listDirectoryEntries().filter { it.isDirectory() }
             if (instances.isEmpty()) {
-                echo("（无 daemon 实例）")
+                echo("(no daemon instances)")
                 return
             }
             for (dir in instances) {
@@ -55,33 +55,33 @@ class DaemonStatusCommand : CliktCommand(name = "status") {
         val key = if (keyFile.exists()) keyFile.readText().trim() else "(unknown)"
         val pid = pidFile.takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull()
         if (pid == null) {
-            echo("daemon [$key]: 未运行（${daemonDir.fileName}）")
+            echo("daemon [$key]: not running (${daemonDir.fileName})")
             return
         }
         val client = DaemonClient(DaemonPaths.socketFile(daemonDir))
         try {
             val s = client.status()
-            echo("daemon [$key]: 运行中 (pid=$pid, dir=${daemonDir.fileName})")
+            echo("daemon [$key]: running (pid=$pid, dir=${daemonDir.fileName})")
             echo("  uptime          ${s.uptimeMs / 1000}s")
             echo("  scripts served  ${s.scriptsServed}")
             echo("  heap            ${s.heapUsedBytes / 1024 / 1024}M / ${s.heapMaxBytes / 1024 / 1024}M")
             echo("  ktx version     ${s.ktxVersion}")
         } catch (e: Exception) {
-            echo("daemon [$key]: PID 文件存在但无法连接：${e.message}")
+            echo("daemon [$key]: pid file present but cannot connect: ${e.message}")
         }
     }
 }
 
 class DaemonStopCommand : CliktCommand(name = "stop") {
 
-    private val all by option("--all", help = "关闭所有 daemon").flag()
-    private val jdkOption by option("--jdk", help = "指定 JDK 主版本（默认当前）").int()
+    private val all by option("--all", help = "Stop every daemon").flag()
+    private val jdkOption by option("--jdk", help = "Target JDK major version (default: current)").int()
 
     override fun run() {
         if (all) {
             val root = DaemonPaths.defaultDaemonDir()
             if (!root.exists()) {
-                echo("（无 daemon 目录）")
+                echo("(no daemon directory)")
                 return
             }
             for (dir in root.listDirectoryEntries().filter { it.isDirectory() }) {
@@ -97,9 +97,9 @@ class DaemonStopCommand : CliktCommand(name = "stop") {
         val client = DaemonClient(DaemonPaths.socketFile(daemonDir))
         try {
             client.shutdown()
-            echo("daemon [${daemonDir.fileName}]: 已请求关闭")
+            echo("daemon [${daemonDir.fileName}]: shutdown requested")
         } catch (e: Exception) {
-            echo("daemon [${daemonDir.fileName}]: 关闭失败（可能已不在运行）：${e.message}")
+            echo("daemon [${daemonDir.fileName}]: shutdown failed (already stopped?): ${e.message}")
         }
     }
 }

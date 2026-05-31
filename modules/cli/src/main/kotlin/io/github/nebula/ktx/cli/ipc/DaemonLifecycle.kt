@@ -13,20 +13,24 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 /**
- * 检测 / 启动 ktx daemon。
+ * Detect / start the ktx daemon.
  *
- * 检测策略：尝试连一下 socket。能连上就认为活着；连不上就启一个新 daemon
- * 子进程，等它写好 socket 文件后再连。
+ * Detection: try connecting to the socket. If it succeeds, the daemon is
+ * alive; otherwise spawn a new daemon child process and wait for it to write
+ * the socket file before connecting.
  *
- * Phase 2.2 起按 [jdkMajor] 路由：每个 (JDK 主版本, 协议版本) 元组对应一个
- * 独立 daemon 目录，互不影响。
+ * Since Phase 2.2, daemons are routed by [jdkMajor]: each
+ * (JDK major version, protocol version) tuple gets its own daemon directory
+ * isolated from the others.
  *
- * 启动子进程：复用当前 JVM 的 java 可执行 + 完整 classpath，main class
- * 换成 [io.github.nebula.ktx.daemon.Bootstrap]。daemon 目录通过环境变量
- * `KTX_DAEMON_DIR` 传入。
+ * Spawning a child process: reuse the current JVM's java executable and full
+ * classpath, but switch the main class to
+ * [io.github.nebula.ktx.daemon.Bootstrap]. The daemon directory is passed via
+ * env var `KTX_DAEMON_DIR`.
  *
- * 并发启动保护：用 daemon 目录下的 `.start.lock` 文件做 advisory lock，
- * 多个 CLI 同时 ensureRunning 时只有一个真正 fork，其他人等 socket 出现。
+ * Concurrent-start guard: a `.start.lock` file in the daemon directory acts
+ * as an advisory lock. When multiple CLIs ensureRunning at once, only one
+ * actually forks; the others wait for the socket to appear.
  */
 object DaemonLifecycle {
 
@@ -35,11 +39,12 @@ object DaemonLifecycle {
     private const val POLL_INTERVAL_MS = 50L
 
     /**
-     * 确保对应 [jdkMajor] 的 daemon 在跑并返回 [DaemonClient]。
+     * Ensure that the daemon for [jdkMajor] is running and return a [DaemonClient].
      *
-     * @param javaBin 用于 fork daemon 的 java 可执行文件路径。默认用当前
-     *   JVM 的；如果脚本声明了 `@file:Toolchain(jdk = "17")`，调用方应当
-     *   传入对应 JDK 的 java 路径，让 daemon 跑在那个 JDK 上。
+     * @param javaBin path to the java executable to use when forking the
+     *   daemon. Defaults to the current JVM's; if the script declares
+     *   `@file:Toolchain(jdk = "17")`, the caller should pass the path to
+     *   the matching JDK's java so the daemon runs on that JDK.
      */
     fun ensureRunning(jdkMajor: Int, javaBin: String? = null): DaemonClient {
         val daemonDir = DaemonPaths.daemonDirFor(jdkMajor)
@@ -78,16 +83,18 @@ object DaemonLifecycle {
 
     private fun currentJavaBin(): String =
         ProcessHandle.current().info().command().orElse(null)
-            ?: error("拿不到当前 JVM 路径")
+            ?: error("cannot resolve current JVM path")
 
     private fun forkDaemon(daemonDir: Path, javaBin: String) {
         val classpath = System.getProperty("java.class.path")
-            ?: error("java.class.path 系统属性为空")
+            ?: error("java.class.path system property is empty")
 
-        // daemon 自己的 AppCDS 归档：放在 daemon 目录，第一次启动 JVM 自动
-        // 归档（AutoCreateSharedArchive），后续启动命中省掉 ~1s 冷启。
-        // 注意 jsa 是按 (JDK class file version, classpath fingerprint) 绑定的，
-        // 我们 daemon 目录已经按 jdkMajor 路由，所以不会跨实例复用，刚好。
+        // The daemon's own AppCDS archive lives in the daemon directory. The
+        // first JVM start auto-archives (AutoCreateSharedArchive); subsequent
+        // starts hit the archive and shave ~1s off cold start. Note that .jsa
+        // files are bound to (JDK class file version, classpath fingerprint),
+        // and our daemon directory is already routed by jdkMajor so it is
+        // never reused across instances, which is exactly what we want.
         val jsa = daemonDir.resolve("daemon.jsa").toAbsolutePath().toString()
 
         val cmd = listOf(
@@ -116,7 +123,7 @@ object DaemonLifecycle {
             }
             Thread.sleep(POLL_INTERVAL_MS)
         }
-        error("daemon 启动超时（${START_TIMEOUT_MS / 1000}s）。日志：${DaemonPaths.logFile(socketPath.parent)}")
+        error("daemon startup timed out (${START_TIMEOUT_MS / 1000}s). log: ${DaemonPaths.logFile(socketPath.parent)}")
     }
 
     fun pid(jdkMajor: Int): Long? = runCatching {

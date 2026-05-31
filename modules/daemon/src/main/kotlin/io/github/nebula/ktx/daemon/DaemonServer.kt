@@ -40,18 +40,18 @@ import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.script.experimental.api.ScriptDiagnostic
 
 /**
- * ktx daemon 服务端。
+ * The ktx daemon server.
  *
- * Phase 2.3 起：
- *   - 流式 stdin（StdinChunk 帧 → PipedOutputStream → 脚本 System.in）
- *   - LOCK resolver 模式（在 daemon 内跑 lock 流程，写 lockfile）
- *   - System.in 也走 [RoutedInputStream] 按 worker 线程隔离
+ * Since Phase 2.3:
+ *   - streaming stdin (StdinChunk frames -> PipedOutputStream -> script System.in)
+ *   - LOCK resolver mode (run the lock flow inside the daemon, write lockfile)
+ *   - System.in is also routed per worker thread via [RoutedInputStream]
  *
- * Phase 2.2 已有：
- *   - 并发处理（cachedThreadPool，每客户端一个 worker）
- *   - stdout/stderr 通过 [RoutedOutputStream] 按 worker 线程隔离
- *   - toolchain 路由（CLI 端按 jdkMajor 启不同 daemon 实例）
- *   - 空闲超时 + heap watchdog
+ * Already in Phase 2.2:
+ *   - concurrent handling (cachedThreadPool, one worker per client)
+ *   - stdout/stderr routed per worker thread via [RoutedOutputStream]
+ *   - toolchain routing (CLI starts a different daemon instance per jdkMajor)
+ *   - idle timeout + heap watchdog
  */
 class DaemonServer(
     private val daemonDir: Path = DaemonPaths.defaultDaemonDir(),
@@ -113,7 +113,7 @@ class DaemonServer(
                     try {
                         handleClient(client, routedOut, routedErr, routedIn)
                     } catch (e: Throwable) {
-                        log.error("处理客户端请求失败", e)
+                        log.error("client request failed", e)
                     } finally {
                         runCatching { client.close() }
                         lastActivityMs.set(System.currentTimeMillis())
@@ -134,12 +134,12 @@ class DaemonServer(
             try {
                 val idleMs = System.currentTimeMillis() - lastActivityMs.get()
                 if (idleMs > TimeUnit.MINUTES.toMillis(idleTimeoutMin.toLong())) {
-                    log.info("空闲 {} 分钟，自杀", idleTimeoutMin)
+                    log.info("idle for {} minutes, exiting", idleTimeoutMin)
                     shutdownRequested = true
                     runCatching { server.close() }
                 }
             } catch (t: Throwable) {
-                log.warn("idle 检查异常", t)
+                log.warn("idle check failed", t)
             }
         }, 30, 30, TimeUnit.SECONDS)
 
@@ -150,11 +150,11 @@ class DaemonServer(
                 val max = rt.maxMemory()
                 val pct = (used.toDouble() / max * 100).toInt()
                 if (pct >= heapWarnPct) {
-                    log.warn("heap 占用 {}% ({}M/{}M)，主动 System.gc()", pct, used / 1024 / 1024, max / 1024 / 1024)
+                    log.warn("heap usage {}% ({}M/{}M), forcing System.gc()", pct, used / 1024 / 1024, max / 1024 / 1024)
                     System.gc()
                 }
             } catch (t: Throwable) {
-                log.warn("heap 检查异常", t)
+                log.warn("heap check failed", t)
             }
         }, 60, 60, TimeUnit.SECONDS)
     }
@@ -180,32 +180,37 @@ class DaemonServer(
             RequestEnvelope.BodyCase.SHUTDOWN -> {
                 Frames.write(output, ResponseEnvelope.newBuilder().setShutdown(ShutdownResponse.getDefaultInstance()).build())
                 shutdownRequested = true
-                log.info("收到 shutdown 请求")
+                log.info("shutdown request received")
             }
             RequestEnvelope.BodyCase.STATUS -> handleStatus(output)
             RequestEnvelope.BodyCase.STDIN_CHUNK ->
-                sendError(output, "首帧不能是 StdinChunk —— 必须先发 RunRequest")
+                sendError(output, "first frame cannot be StdinChunk; RunRequest must come first")
             RequestEnvelope.BodyCase.BODY_NOT_SET -> sendError(output, "request body not set")
             null -> sendError(output, "request body is null")
         }
     }
 
     /**
-     * 处理 RUN 请求。
+     * Handle a RUN request.
      *
-     * 架构：
-     *   - 当前线程（worker A）跑脚本：bind routed in/out/err 后调 runner.run。
-     *   - **如果**客户端会发 stdin chunks：本来需要后台线程从 socket 读 chunks
-     *     写 pipe。但脚本 run 是阻塞的，本线程没法同时干两件事。
-     *     解法：另起一个线程当「stdin pump」，从 socket input 读后续帧、把
-     *     data 写到 PipedOutputStream，eof 时关 pipe。
+     * Architecture:
+     *   - The current thread (worker A) runs the script: bind routed
+     *     in/out/err and call runner.run.
+     *   - **If** the client will send stdin chunks: ideally a background
+     *     thread reads chunks from the socket and writes them to the pipe.
+     *     But runner.run is blocking, so this thread cannot do both.
+     *     Solution: spawn a separate "stdin pump" thread that reads
+     *     subsequent frames from the socket input, writes data to the
+     *     PipedOutputStream, and closes the pipe on EOF.
      *
-     * 简化：
-     *   - 老 `req.stdin` bytes 字段（Phase 2.2 兼容）：先把它写进 pipe，再
-     *     开 pump 线程读 socket。
-     *   - 没有 stdin 来源（也没 chunks）：直接给脚本一个 nullInputStream。
+     * Simplifications:
+     *   - Legacy `req.stdin` bytes field (Phase 2.2 compat): write it
+     *     into the pipe before starting the pump thread.
+     *   - No stdin source at all (no chunks): pass nullInputStream to
+     *     the script.
      *
-     * LOCK 模式：用 RecordingResolver + bypassCompiledCache，跑完后写 lockfile。
+     * LOCK mode: use RecordingResolver + bypassCompiledCache, then write
+     * the lockfile after running.
      */
     private fun handleRun(
         req: RunRequest,
@@ -219,14 +224,16 @@ class DaemonServer(
         val stdoutSink = SocketSink(output, isErr = false, writeLock)
         val stderrSink = SocketSink(output, isErr = true, writeLock)
 
-        // stdin 链路：用 PipedOutputStream/InputStream 桥。pump 线程读 socket
-        // chunks 写 pipe；脚本读 pipe 端。如果客户端不会发 chunks（老协议
-        // bytes 字段或根本没 stdin），直接拿固定 stream 也行 —— 但为了简化
-        // 一律走 pipe。
+        // stdin path: bridge via PipedOutputStream/InputStream. The pump
+        // thread reads StdinChunk frames from the socket and writes to the
+        // pipe; the script reads from the pipe end. When the client will
+        // never send chunks (legacy bytes field, or no stdin at all), a
+        // fixed stream would also work, but always going through the pipe
+        // keeps things simple.
         val stdinPipeReader = PipedInputStream(64 * 1024)
         val stdinPipeWriter = PipedOutputStream(stdinPipeReader)
 
-        // 老 bytes 字段兼容
+        // Legacy bytes-field compatibility
         if (req.stdin != null && !req.stdin.isEmpty) {
             stdinPipeWriter.write(req.stdin.toByteArray())
         }
@@ -251,7 +258,7 @@ class DaemonServer(
             }
 
             if (result == null) {
-                sendError(output, "RunRequest 必须填 script_path 或 inline_source")
+                sendError(output, "RunRequest must specify either script_path or inline_source")
                 return
             }
 
@@ -263,16 +270,18 @@ class DaemonServer(
             exitCode = if (result is ResultWithDiagnostics.Success) 0 else 1
             scriptsServed.incrementAndGet()
         } catch (t: Throwable) {
-            // 用 routed System.err 让错误流回客户端 stderr，方便用户诊断
+            // Use the routed System.err so the error reaches the client's
+            // stderr and aids diagnosis.
             try {
-                System.err.println("daemon 内部错误：${t.message}")
+                System.err.println("daemon internal error: ${t.message}")
                 t.printStackTrace(System.err)
-            } catch (_: Throwable) { /* 流可能已坏 */ }
-            log.error("脚本执行异常", t)
+            } catch (_: Throwable) { /* the stream may be broken */ }
+            log.error("script execution failed", t)
             exitCode = 2
         } finally {
-            // 顺序：先 flush sinks（仍 bind 着，写帧能正确序列化），再 unbind，
-            // 再发 ExitEvent，最后清 stdin pipe / pump。
+            // Order: flush sinks first (still bound, frames can serialize
+            // correctly), then unbind, then send ExitEvent, finally close
+            // the stdin pipe / pump.
             runCatching { stdoutSink.flush() }
             runCatching { stderrSink.flush() }
             routedOut.unbind()
@@ -280,9 +289,11 @@ class DaemonServer(
             routedIn.unbind()
         }
 
-        // 发 ExitEvent 必须在 finally 之外、unbind 之后 —— 否则它如果走到
-        // 已 unbind 的 routedOut（不是这里的 socket sink）会写到 fallback。
-        // 注意：这里出现异常就让 client 看到 EOF 自行处理，不再尝试发帧。
+        // ExitEvent must be sent outside the finally block, after unbind;
+        // otherwise it might be routed to the (now-unbound) routedOut and
+        // hit the fallback sink instead of this socket.
+        // Note: if this throws, we let the client see EOF and handle it
+        // itself; we don't try to send another frame.
         try {
             synchronized(writeLock) {
                 Frames.write(
@@ -293,7 +304,7 @@ class DaemonServer(
                 )
             }
         } catch (t: Throwable) {
-            log.warn("发送 ExitEvent 失败：{}", t.message)
+            log.warn("failed to send ExitEvent: {}", t.message)
         } finally {
             runCatching { stdinPipeWriter.close() }
             runCatching { stdinPipeReader.close() }
@@ -302,15 +313,16 @@ class DaemonServer(
     }
 
     /**
-     * 后台 stdin pump：从 socket 持续读 RequestEnvelope，遇到 StdinChunk
-     * 就把 data 写到 [stdinPipeWriter]。eof=true 或读到 EOF / 异常时退出。
+     * Background stdin pump: continuously reads RequestEnvelope from the
+     * socket; on each StdinChunk, writes data to [stdinPipeWriter]. Exits
+     * on eof=true, on EOF, or on any exception.
      */
     private fun stdinPump(input: InputStream, stdinPipeWriter: PipedOutputStream) {
         try {
             while (true) {
                 val req = Frames.read(input, RequestEnvelope.parser()) ?: break
                 if (req.bodyCase != RequestEnvelope.BodyCase.STDIN_CHUNK) {
-                    log.warn("stdin pump 收到非 StdinChunk 帧：{}", req.bodyCase)
+                    log.warn("stdin pump received non-StdinChunk frame: {}", req.bodyCase)
                     continue
                 }
                 val chunk = req.stdinChunk
@@ -321,9 +333,9 @@ class DaemonServer(
                 if (chunk.eof) break
             }
         } catch (_: java.io.IOException) {
-            // socket 关或 pipe 关：正常路径
+            // socket closed or pipe closed: normal exit path
         } catch (t: Throwable) {
-            log.warn("stdin pump 异常", t)
+            log.warn("stdin pump failed", t)
         } finally {
             runCatching { stdinPipeWriter.close() }
         }
@@ -333,9 +345,9 @@ class DaemonServer(
         val resolver = when (req.resolverMode) {
             ResolverMode.FROZEN -> {
                 val lockPath = req.lockfilePath.takeIf { it.isNotEmpty() }
-                    ?: error("FROZEN 模式必须指定 lockfile_path")
+                    ?: error("FROZEN mode requires lockfile_path")
                 val lockfile = Lockfile.read(Path.of(lockPath))
-                    ?: error("lockfile 不存在：$lockPath")
+                    ?: error("lockfile not found: $lockPath")
                 FrozenResolver(lockfile)
             }
             else -> null
@@ -353,22 +365,28 @@ class DaemonServer(
     }
 
     /**
-     * LOCK 模式：仅支持 file 模式（inline 没有"对应的脚本路径"概念）。
+     * LOCK mode: file mode only (inline source has no "corresponding script
+     * path" notion).
      *
-     * 与 `ktx lock` 子命令语义一致：仅触发依赖解析、写 lockfile，**不**跑
-     * 脚本主体（避免 HTTP 请求等副作用）。这与 `ktx run --lock` 在非 daemon
-     * 路径下的"跑+刷"语义略不同 —— daemon 共享编译缓存，要禁用缓存才能让
-     * RecordingResolver 拿到记录，禁用缓存又会让"跑"耗时，权衡后 daemon
-     * LOCK 走纯 lock 流程。
+     * Same semantics as the `ktx lock` subcommand: only trigger dependency
+     * resolution and write the lockfile; do **not** execute the script body
+     * (avoids side effects like HTTP calls). This differs slightly from the
+     * "run + refresh" semantics of `ktx run --lock` on the non-daemon path:
+     * the daemon shares the compile cache, and disabling that cache is
+     * required to give RecordingResolver records to capture; running with
+     * the cache disabled is slow, so the daemon LOCK path is pure-lock as a
+     * tradeoff.
      *
-     * 进程级状态污染：LockingFlow 内部改 system property 临时禁用缓存，跑完
-     * 恢复。daemon 并发期间另一个 worker 可能恰好在编译，会把它推到无缓存
-     * 路径。用 [lockSerializer] 串行化所有 LOCK 请求规避（lock 极少见、用户
-     * 可接受短暂排队）。
+     * Process-wide state pollution: LockingFlow temporarily mutates a system
+     * property to disable the cache, restoring it after running. While this
+     * is in flight another concurrent worker may be compiling and would be
+     * forced onto the no-cache path. We avoid that by serializing all LOCK
+     * requests via [lockSerializer] (lock is rare; brief queueing is
+     * acceptable).
      */
     private fun runLockMode(req: RunRequest, args: Array<String>): ResultWithDiagnostics<*>? {
         val scriptPath = req.scriptPath.takeIf { it.isNotEmpty() }
-            ?: error("LOCK 模式仅支持 script_path（inline 无对应 lockfile）")
+            ?: error("LOCK mode supports script_path only (no lockfile for inline source)")
         return synchronized(lockSerializer) {
             LockingFlow.lockAndOptionallyRun(
                 runner = runner,

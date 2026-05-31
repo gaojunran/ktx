@@ -1,0 +1,17 @@
+{
+  "name": "ktx-docs",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "User-facing documentation for ktx, a modern Kotlin script runner.",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4",
+    "vitepress-plugin-mermaid": "2.0.17",
+    "mermaid": "11.15.0"
+  }
+}

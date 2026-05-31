@@ -15,26 +15,28 @@ import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.script.experimental.jvm.util.KotlinJars
 
 /**
- * 编译一个 .kts 脚本到独立 fat jar，不依赖 ktx 也不依赖 Kotlin 编译器。
+ * Compile a .kts script into a self-contained fat jar that depends on neither
+ * ktx nor the Kotlin compiler.
  *
- * 工作流：
- *   1. 用 [RecordingResolver] 包裹真实 resolver，**仅编译**（不执行）脚本，
- *      抓取 main-kts 解析出的所有依赖 jar 路径；
- *   2. 编译产物落到独立的 build cache 目录（通过临时改 system property
- *      "kotlin.main.kts.compiled.scripts.cache.dir" 让 main-kts 写过去）；
- *   3. 用 [JarPacker] 把脚本产物 jar + 依赖 jar + ktx 必需的运行时 class
- *      合并成 fat jar。
+ * Workflow:
+ *   1. Wrap the real resolver in a [RecordingResolver] and **compile only**
+ *      (don't execute) the script, capturing every dep jar path main-kts resolves.
+ *   2. Compiled artifacts land in a dedicated build cache directory (we
+ *      temporarily redirect the system property
+ *      "kotlin.main.kts.compiled.scripts.cache.dir" so main-kts writes there).
+ *   3. [JarPacker] merges the compiled jar + dep jars + the runtime classes ktx
+ *      needs into a single fat jar.
  *
- * 产物 jar 不含：
- *   - kotlin-compiler-embeddable（脚本已编译完，不再需要编译器）
- *   - kotlin-scripting-* （运行时不需要 scripting host）
- *   - main-kts.jar（运行时不需要 MainKtsConfigurator）
- *   - ktx 自己的 cli/daemon/protocol 模块（运行时无关）
+ * The output jar does NOT contain:
+ *   - kotlin-compiler-embeddable (script is already compiled)
+ *   - kotlin-scripting-* (no scripting host needed at runtime)
+ *   - main-kts.jar (no MainKtsConfigurator needed at runtime)
+ *   - ktx's own cli/daemon/protocol modules (irrelevant at runtime)
  *
- * 含的运行时 jar：
+ * The output jar DOES contain:
  *   - kotlin-stdlib + kotlin-script-runtime
- *   - 所有 @file:DependsOn 解析出的 jar
- *   - ktx core 模块的 jar（含 KtsScript 基类）
+ *   - every jar resolved from @file:DependsOn
+ *   - the ktx core module jar (provides the KtsScript base class)
  */
 class CompileFlow {
 
@@ -45,25 +47,29 @@ class CompileFlow {
         val tmpCacheDir = Files.createTempDirectory("ktx-compile-cache-")
 
         try {
-            // 把 main-kts 缓存目录指到我们临时位置 —— 编译产物会落在这里、
-            // 我们能精确定位（全局缓存里有很多 jar 不好挑）。
+            // Redirect main-kts's cache dir to our temp location — the
+            // compiled artifact lands there so we can locate it precisely
+            // (the global cache contains many jars and is hard to filter).
             val originalCache = System.getProperty(MAIN_KTS_CACHE_DIR_PROPERTY)
             System.setProperty(MAIN_KTS_CACHE_DIR_PROPERTY, tmpCacheDir.toAbsolutePath().toString())
 
             val runner = ScriptRunner(cacheDir = tmpCacheDir)
             val recording = RecordingResolver(LockingFlow.defaultRealResolver())
 
-            log.info("编译 {}", absScriptPath)
+            log.info("compiling {}", absScriptPath)
 
-            // 关键：**不**用 wrapForLockOnly。lock 流程把主体换成 Unit 是为了
-            // 避免副作用，但 compile 必须保留脚本主体 —— 用户期望产物 jar 跑
-            // 起来执行真实代码。所以走 runner.run（文件路径）让 main-kts 编译
-            // 完整源码并产出 jar。
+            // Important: we do **not** use wrapForLockOnly. The lock flow
+            // replaces the body with Unit to avoid side effects, but compile
+            // must keep the body intact — the user expects the produced jar
+            // to actually run their code. So we go through runner.run (file
+            // path) and let main-kts compile the full source and emit a jar.
             //
-            // 副作用问题：脚本主体确实会被执行一次（包含 HTTP 请求等）。这跟
-            // ktx run 第一次跑没区别。代价可接受。Phase 2.5 可加一个「only
-            // compile, never evaluate」的入口（main-kts 的 BasicJvmScriptingHost
-            // 内部确有这种 API，但要绕开 RunnerKt 的默认评估器）。
+            // Side-effect note: the body does get executed once (HTTP requests
+            // and so on). That's no different from the first `ktx run`. The
+            // cost is acceptable. Phase 2.5 may add an "only compile, never
+            // evaluate" entry point (main-kts's BasicJvmScriptingHost has a
+            // suitable API internally, but bypassing RunnerKt's default
+            // evaluator takes effort).
             val compileResult = runner.run(absScriptPath, emptyArray(), resolver = recording)
 
             if (originalCache != null) System.setProperty(MAIN_KTS_CACHE_DIR_PROPERTY, originalCache)
@@ -73,16 +79,18 @@ class CompileFlow {
                 return compileResult
             }
 
-            // 在 tmpCacheDir 里找新生成的 jar。可能有 0 个或 1 个 ——
-            // 0 个：脚本太简单，main-kts 缓存机制对 inline 脚本不一定写盘
-            //     （命中条件含「ScriptCompilationConfiguration 非瞬态项哈希」
-            //      和「script source」，inline 模式下 source 没问题，但有些
-            //      场景下缓存 key 算出来不写）。
-            // 这一情况下需要 fallback：直接把 wrapped source 走完整 compile 流程。
+            // Locate the freshly produced jar in tmpCacheDir. There may be 0 or 1:
+            //   0: the script is too trivial. main-kts's caching for inline
+            //      scripts doesn't always write to disk (the cache hit
+            //      condition involves "non-transient ScriptCompilationConfiguration
+            //      hash" + "script source"; in inline mode source is fine,
+            //      but in some scenarios the computed cache key isn't persisted).
+            // For the 0-file case we'd need a fallback that runs the wrapped
+            // source through the full compile pipeline.
             val jars = tmpCacheDir.toFile().listFiles { _, n -> n.endsWith(".jar") }.orEmpty()
             require(jars.size == 1) {
-                "编译产物 jar 数量异常（cacheDir=$tmpCacheDir, found=${jars.size}）。" +
-                    "这通常意味着 main-kts 缓存键算法变了，需要更新 ktx。"
+                "unexpected number of compiled jars (cacheDir=$tmpCacheDir, found=${jars.size}). " +
+                    "This usually means main-kts's cache key algorithm has changed and ktx needs updating."
             }
             val compiledJar = jars[0]
 
@@ -91,7 +99,7 @@ class CompileFlow {
             val ktxCoreJar = locateKtxCoreJar()
 
             log.info(
-                "合并：脚本产物({}KB) + {} 用户依赖 + {} Kotlin 运行时{}",
+                "merging: script artifact ({}KB) + {} user deps + {} Kotlin runtime jars{}",
                 compiledJar.length() / 1024,
                 resolvedDeps.size,
                 runtimeJars.size,
@@ -116,33 +124,32 @@ class CompileFlow {
     }
 
     /**
-     * 运行时必需的 Kotlin jar：
-     *   - kotlin-stdlib（基础语言库）
-     *   - kotlin-script-runtime（脚本基类 / TemplateWithArgs 等）
-     *   - kotlin-scripting-jvm（含 RunnerKt，脚本类的 main() 调用它来跑）
-     *   - kotlin-scripting-common（RunnerKt 间接依赖：ScriptCompilationConfiguration 等）
-     *   - kotlin-reflect（脚本类用 ClassReference.getObjectInstance 触发反射）
+     * Kotlin jars required at runtime:
+     *   - kotlin-stdlib (core language library)
+     *   - kotlin-script-runtime (script base classes / TemplateWithArgs etc.)
+     *   - kotlin-scripting-jvm (contains RunnerKt, called by the script class's main())
+     *   - kotlin-scripting-common (transitive dep of RunnerKt: ScriptCompilationConfiguration etc.)
+     *   - kotlin-reflect (the script class triggers reflection via ClassReference.getObjectInstance)
      *
-     * 通过 [KotlinJars] 拿到 stdlib + script-runtime；其他几个通过
-     * [Class.getProtectionDomain] 反向定位（这些 jar 已经在 ktx 自己的
-     * classpath 里）。
+     * [KotlinJars] supplies stdlib + script-runtime; the rest are located via
+     * [Class.getProtectionDomain] (these jars are already on ktx's own classpath).
      */
     private fun collectRuntimeJars(): List<Path> {
         val jars = mutableListOf<Path>()
         for (jar in KotlinJars.kotlinScriptStandardJars) {
             if (jar != null && jar.exists()) jars.add(jar.toPath())
         }
-        // scripting-jvm 里的 RunnerKt 是脚本类 main() 直接调用的入口
+        // RunnerKt in scripting-jvm is the entry point invoked directly from the script class's main()
         locateJarOf("kotlin.script.experimental.jvm.RunnerKt")?.let { jars.add(it) }
-        // scripting-common 提供 ScriptCompilationConfiguration 等 API 类型
+        // scripting-common provides API types like ScriptCompilationConfiguration
         locateJarOf("kotlin.script.experimental.api.ScriptCompilationConfiguration")?.let { jars.add(it) }
-        // reflect：脚本类启动流程里 ConfigurationFromTemplateKt 用 KClass.objectInstance
+        // reflect: ConfigurationFromTemplateKt uses KClass.objectInstance during script bootstrap
         locateJarOf("kotlin.reflect.full.KClasses")?.let { jars.add(it) }
         return jars.distinct()
     }
 
     /**
-     * 通过 ClassLoader 找到一个类所在的 jar 路径。失败返回 null。
+     * Find the jar that contains a class via its ClassLoader. Returns null on failure.
      */
     private fun locateJarOf(className: String): Path? = runCatching {
         val cls = Class.forName(className)
@@ -159,9 +166,9 @@ class CompileFlow {
 
     private fun readMainClass(jarPath: Path): String {
         java.util.jar.JarFile(jarPath.toFile()).use { jar ->
-            val manifest = jar.manifest ?: error("$jarPath 无 manifest")
+            val manifest = jar.manifest ?: error("$jarPath has no manifest")
             return manifest.mainAttributes.getValue("Main-Class")
-                ?: error("$jarPath manifest 无 Main-Class")
+                ?: error("$jarPath manifest is missing Main-Class")
         }
     }
 

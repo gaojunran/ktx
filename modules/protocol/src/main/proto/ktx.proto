@@ -5,15 +5,16 @@ package ktx.proto.v1;
 option java_package = "io.github.nebula.ktx.proto.v1";
 option java_multiple_files = true;
 
-// ktx daemon RPC，Phase 2.1 最小子集。
+// ktx daemon RPC, the minimal subset for Phase 2.1.
 //
-// 帧格式：4 字节 big-endian 长度前缀 + 一个 RequestEnvelope / ResponseEnvelope
-// 序列化字节。每个客户端连接对应一次请求 + 流式响应，处理完 daemon 关连接。
+// Frame format: 4-byte big-endian length prefix followed by a serialized
+// RequestEnvelope / ResponseEnvelope. Each client connection is one request
+// plus a streaming response; the daemon closes the connection when it's done.
 //
-// 后续版本扩展（Lock / Compile / Status）继续往 RequestEnvelope.oneof 里加。
+// Later versions (Lock / Compile / Status) extend RequestEnvelope.oneof.
 
 message RequestEnvelope {
-  // 协议版本：客户端发起时填，daemon 检查不匹配直接返回失败。
+  // Protocol version: the client fills it in; the daemon refuses on mismatch.
   uint32 protocol_version = 1;
 
   oneof body {
@@ -24,13 +25,16 @@ message RequestEnvelope {
   }
 }
 
-// 流式 stdin：Run 请求后，client 可以发若干 StdinChunk 帧，每帧是一段
-// stdin 字节。eof=true 标志流结束（client 读到 EOF 或 stdin 已读完）。
-// daemon 把 data 一段段写入脚本的 System.in 包装的 PipedOutputStream。
+// Streaming stdin: after a Run request, the client may send zero or more
+// StdinChunk frames, each carrying a chunk of stdin bytes. eof=true marks
+// the end of the stream (the client hit EOF or finished reading stdin).
+// The daemon writes data into the script's System.in via a PipedOutputStream.
 //
-// Phase 2.3 简化：data 单帧上限走 Frames 的 32MB 默认；脚本读 stdin 时
-// 阻塞等下一帧。client 发完 eof=true 后才轮到 daemon 真正开始处理（脚本
-// 的 readLine() 可能在 client 发出 eof 之前就读到数据）。
+// Phase 2.3 simplification: per-frame data is capped by Frames' default
+// 32 MB; while reading stdin the script blocks waiting for the next frame.
+// Only after the client sends eof=true does the daemon truly start
+// processing (although the script's readLine() may have already received
+// data before the eof arrives).
 message StdinChunk {
   bytes data = 1;
   bool eof = 2;
@@ -47,27 +51,29 @@ message ResponseEnvelope {
 
 // ---- Run --------------------------------------------------------------
 
-// 跑一个脚本。
-//   - 文件模式：填 script_path（绝对路径），daemon 直接读文件。
-//   - inline 模式：填 inline_source（脚本源码），daemon 把它当 inline 跑。
-// args 透传到脚本的构造器形参。
+// Runs a script.
+//   - file mode: set script_path (absolute path); the daemon reads the file directly.
+//   - inline mode: set inline_source (script source); the daemon runs it inline.
+// args is forwarded to the script's constructor parameter.
 message RunRequest {
-  string script_path = 1;     // 与 inline_source 二选一
+  string script_path = 1;     // mutually exclusive with inline_source
   string inline_source = 2;
   repeated string args = 3;
-  string virtual_name = 4;    // inline 模式的诊断文件名
-  string cwd = 5;             // 客户端的工作目录，daemon 内 chdir 用
+  string virtual_name = 4;    // diagnostic file name for inline mode
+  string cwd = 5;             // client cwd; the daemon chdirs into it
 
-  // 依赖解析模式，Phase 2.2 起：
-  //   NORMAL（默认）：用 main-kts 默认 resolver，联网走 Aether
-  //   FROZEN：仅按 lockfile_path 指向的 lockfile 解析，不联网
-  //   LOCK（Phase 2.3）：在线解析 + 完成后写 lockfile 到 lockfile_path。
-  //                     daemon 端禁用编译产物缓存，确保 RecordingResolver
-  //                     拿得到完整解析记录。
+  // Dependency resolution mode, since Phase 2.2:
+  //   NORMAL (default): main-kts's default resolver via Aether (online)
+  //   FROZEN: resolve only via the lockfile at lockfile_path, no network
+  //   LOCK (Phase 2.3): resolve online and write the lockfile to
+  //                     lockfile_path on completion. The daemon disables
+  //                     the compiled-script cache so RecordingResolver
+  //                     observes the full resolution.
   ResolverMode resolver_mode = 6;
-  string lockfile_path = 7;   // FROZEN 必填读取路径，LOCK 必填写入路径
-  // stdin 字节字段已废弃 —— Phase 2.3 起改用流式 StdinChunk 帧。
-  // 字段保留为 reserved，老 client 发的 bytes 也接受但不再优先消费。
+  string lockfile_path = 7;   // required as the source path for FROZEN, the destination for LOCK
+  // The stdin bytes field is deprecated — since Phase 2.3, streaming
+  // StdinChunk frames are used instead. The field is kept reserved; bytes
+  // from older clients are still accepted but are no longer the primary path.
   bytes stdin = 8;
 }
 
@@ -77,7 +83,8 @@ enum ResolverMode {
   LOCK = 2;
 }
 
-// daemon 流式回传：脚本运行期间的 stdout/stderr 字节，最后一个 Exit。
+// Streaming response from the daemon: stdout/stderr bytes during script
+// execution, terminated by a single Exit event.
 message RunEvent {
   oneof kind {
     bytes stdout = 1;

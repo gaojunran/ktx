@@ -9,23 +9,26 @@ import kotlin.script.experimental.dependencies.RepositoryCoordinates
 import java.io.File
 
 /**
- * 包装一个真实的 [ExternalDependenciesResolver]，在解析过程中**旁路记录**
- * 每个顶层坐标解析出来的 jar 文件列表，以及曾经声明过的仓库 URL。
+ * Wraps a real [ExternalDependenciesResolver] and **records as a side effect**,
+ * during resolution, the jar files produced by each top-level coordinate plus
+ * every declared repository URL.
  *
- * 这样一次正常 run 之后，我们就有了构造 lockfile 的全部信息：
- *   - 顶层 `@file:DependsOn(...)` 声明的坐标 → 解析得到的 jar 列表
- *   - `@file:Repository(...)` 声明的所有仓库 URL
+ * After one normal run we therefore have everything needed to build a lockfile:
+ *   - top-level `@file:DependsOn(...)` coordinates → resolved jar lists
+ *   - all `@file:Repository(...)` URLs declared
  *
- * 实现要点：
- *   - 转发所有方法到 [delegate]，不改变行为；
- *   - 仅追加观察，不参与决策，对 main-kts 透明；
- *   - 线程安全：单脚本的解析并发度极低，但 main-kts 内部对仓库列表使用
- *     synchronized list，这里用同步集合保持一致风格。
+ * Implementation notes:
+ *   - all methods forward to [delegate]; behavior is unchanged;
+ *   - we only observe, never decide — transparent to main-kts;
+ *   - thread safety: parallelism is low for a single script's resolution,
+ *     but main-kts uses a synchronized list internally for repositories,
+ *     so we mirror that style with synchronized collections.
  *
- * 注意 [ExternalDependenciesResolver] 接口里有「单坐标」和「批量」两个
- * `resolve`，main-kts 实际调的是哪个不固定，所以两个都要 override。批量
- * 接口默认实现会内部转单坐标，但在 [MavenDependenciesResolver] 里被重写
- * 为一次性 Aether 调用，不能假设。
+ * The [ExternalDependenciesResolver] interface has both single-coordinate and
+ * batch `resolve` overloads, and which one main-kts calls isn't fixed, so we
+ * must override both. The batch default delegates to single-coordinate, but
+ * in [MavenDependenciesResolver] it's overridden to make a single Aether call,
+ * so we can't assume.
  */
 class RecordingResolver(
     private val delegate: ExternalDependenciesResolver,
@@ -34,10 +37,10 @@ class RecordingResolver(
     private val resolved = mutableMapOf<String, List<File>>()
     private val repositories = mutableListOf<String>()
 
-    /** 顶层 coord -> 解析出的 jar 列表（含传递依赖）。 */
+    /** Top-level coord -> resolved jar list (including transitives). */
     fun snapshot(): Map<String, List<File>> = synchronized(resolved) { resolved.toMap() }
 
-    /** 脚本里声明过的仓库 URL（去重，按声明顺序）。 */
+    /** Repository URLs declared in the script (deduplicated, in declaration order). */
     fun repositorySnapshot(): List<String> = synchronized(repositories) { repositories.toList() }
 
     override fun acceptsArtifact(artifactCoordinates: String): Boolean =
@@ -62,9 +65,11 @@ class RecordingResolver(
         artifactsWithLocations: List<ArtifactWithLocation>,
         options: Options,
     ): ResultWithDiagnostics<List<File>> {
-        // main-kts 的批量解析会把所有 artifact 一并扔给 Aether，单次返回全部 jar；
-        // 我们没法把结果按坐标拆回去。折中：把所有 jar 挂在每个顶层坐标下，
-        // 后续 lockfile 写入时去重。Phase 1.2 的可重现性目标对此够用。
+        // main-kts's batch resolver hands all artifacts to Aether at once and
+        // returns a single combined jar list; we can't split the result back
+        // by coordinate. Compromise: attach every jar to every top-level
+        // coordinate, and dedupe later when writing the lockfile. Sufficient
+        // for Phase 1.2's reproducibility goal.
         val result = delegate.resolve(artifactsWithLocations, options)
         if (result is ResultWithDiagnostics.Success) {
             val jars = result.value

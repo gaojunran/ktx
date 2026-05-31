@@ -17,9 +17,10 @@ dependencies {
 
 kotlin {
     jvmToolchain(21)
-    // 把字节码 target 降到 17：CLI 自己可能被 re-exec 到任意 LTS JDK 上
-    // 跑（@file:Toolchain(jdk="17") 这种），因此 class file version 不能
-    // 超过 17 支持的。Kotlin 用 JDK 21 编译但 jvmTarget=17 完全合法。
+    // Lower bytecode target to 17: ktx itself may be re-exec'd onto an older
+    // LTS JDK (e.g. when a script declares @file:Toolchain(jdk = "17")), so the
+    // class file version must not exceed 17. Compiling with JDK 21 toolchain
+    // but emitting JVM_17 bytecode is fully supported by Kotlin.
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
@@ -37,12 +38,13 @@ tasks.test {
 application {
     mainClass.set("io.github.nebula.ktx.cli.MainKt")
     applicationName = "ktx"
-    // 让所有通过 bin/ktx 启动的 ktx 进程加载预生成的 AppCDS 归档。
-    // 占位符 `APP_HOME_PLACEHOLDER` 会在 startScripts 任务里被替换为
-    // 真正的 shell 变量引用（详见下方 startScripts.doLast）。
+    // Make every ktx invocation through bin/ktx load the prebuilt AppCDS
+    // archive. The placeholder APP_HOME_PLACEHOLDER is replaced with the
+    // real shell-variable reference in the startScripts.doLast hook below.
     //
-    // -XX:+AutoCreateSharedArchive：JDK 19+ 行为，jsa 缺失或不匹配时
-    // JVM 自动跑一次归档放回原位置，不报错 —— 优雅降级。
+    // -XX:+AutoCreateSharedArchive (JDK 19+): if the .jsa file is missing
+    // or its class-file version mismatches the running JVM, the JVM
+    // silently rebuilds it in place. Graceful degradation, no errors.
     applicationDefaultJvmArgs = listOf(
         "-XX:SharedArchiveFile=APP_HOME_PLACEHOLDER/lib/ktx.jsa",
         "-XX:+AutoCreateSharedArchive",
@@ -50,23 +52,27 @@ application {
 }
 
 tasks.named<JavaExec>("run") {
-    // 让脚本路径相对工程根，方便 ./gradlew :modules:cli:run --args="run samples/xxx.kts"
+    // Resolve script paths relative to the project root, so
+    // `./gradlew :modules:cli:run --args="run samples/xxx.kts"` just works.
     workingDir = rootProject.projectDir
     standardInput = System.`in`
 }
 
-// startScripts 默认会把 applicationDefaultJvmArgs 当作字面字符串塞进
-// DEFAULT_JVM_OPTS=''，但我们要在 -XX:SharedArchiveFile 路径里引用
-// $APP_HOME 这个 shell 变量。下面的 doLast 干两件事：
-//   1. APP_HOME_PLACEHOLDER -> 真正的 shell 引用（Unix $APP_HOME，Windows %APP_HOME%）；
-//   2. Unix 脚本里的 DEFAULT_JVM_OPTS 用单引号包裹，里面的 $APP_HOME 不展开。
-//      把那一行的最外层引号从单引号换成双引号，让 shell 真的把它解析。
+// startScripts inserts applicationDefaultJvmArgs as a literal string into
+// DEFAULT_JVM_OPTS='...', but we need $APP_HOME to expand inside the
+// -XX:SharedArchiveFile path. The doLast block does two things:
+//   1. Replace APP_HOME_PLACEHOLDER with the proper shell reference
+//      ($APP_HOME on Unix, %APP_HOME% on Windows).
+//   2. Switch the outer single quotes around DEFAULT_JVM_OPTS to double
+//      quotes so the shell actually expands $APP_HOME (POSIX never expands
+//      variables inside single quotes).
 tasks.named<CreateStartScripts>("startScripts") {
     doLast {
         val replaced = unixScript.readText()
             .replace("APP_HOME_PLACEHOLDER", "\$APP_HOME")
-            // Gradle 生成的形式是： DEFAULT_JVM_OPTS='"...$APP_HOME..."'
-            // 把外层单引号换成双引号；里面的内层双引号变成 \"
+            // Gradle emits: DEFAULT_JVM_OPTS='"...$APP_HOME..."'
+            // We rewrite the outer quotes to double-quotes and escape any
+            // inner double quotes.
             .replace(
                 Regex("""(?m)^DEFAULT_JVM_OPTS='(.*)'$"""),
             ) { match ->
@@ -82,18 +88,26 @@ tasks.named<CreateStartScripts>("startScripts") {
 }
 
 /**
- * 生成 AppCDS 归档（ktx.jsa）放到 install 目录的 lib/ 下。
+ * Generate the AppCDS archive (ktx.jsa) under the install dir's lib/.
  *
- * 实现方式：用 -XX:ArchiveClassesAtExit 跑一次 `ktx --help`，触发动态归档。
- * 这是 JDK 17+ 推荐的现代写法，把 -Xshare:dump 那套老的两步流程
- * 简化成一次执行。`ktx --help` 加载的类与正常 run 高度重叠，归档命中率
- * 接近 90%。
+ * Strategy: run `ktx -e 'Unit'` once with -XX:ArchiveClassesAtExit, which
+ * triggers dynamic archiving. This is the modern JDK 17+ flow, replacing
+ * the older two-step -Xshare:dump dance.
  *
- * 输出 11MB 左右的 jsa，启动时间能从 ~210ms 降到 ~120ms（实测）。
+ * Why `-e 'Unit'` and not `--help`: the archive's hit rate is bounded by
+ * the overlap between classes loaded during archival and classes loaded
+ * at runtime. `--help` only goes through clikt and exits without loading
+ * the Kotlin scripting host, which is the bulk of every real `ktx run`.
+ * `-e 'Unit'` exercises the whole scripting-host init path, recording all
+ * the heavy classes into the archive.
  *
- * AutoCreateSharedArchive 兜底：如果用户用一个不同 class file version 的
- * JDK 跑（例如 ktx re-exec 到 JDK 17），JVM 会发现 archive 不匹配并自动
- * 重建 —— 不会报错，只是首次再付一次归档成本。
+ * Produces ~11 MB of jsa and shaves ~80-90 ms off startup.
+ *
+ * AutoCreateSharedArchive (set in applicationDefaultJvmArgs above) is the
+ * safety net: if a user re-execs ktx onto a JDK with a different class
+ * file version (e.g. JDK 17 instead of 21), the JVM detects the
+ * mismatch and rebuilds the archive on first run. No errors, just one
+ * extra cold start.
  */
 val generateAppCdsArchive by tasks.registering(Exec::class) {
     group = "distribution"
@@ -109,27 +123,22 @@ val generateAppCdsArchive by tasks.registering(Exec::class) {
     doFirst {
         val installRoot = installDir.get().asFile
         val launcher = installRoot.resolve("bin/ktx")
-        require(launcher.isFile) { "找不到 ${launcher.absolutePath}，先跑 :installDist" }
+        require(launcher.isFile) { "Missing ${launcher.absolutePath}; run :installDist first." }
 
-        // 从启动脚本里抠 CLASSPATH，复用它生成 jsa：
-        // CDS 在归档与运行时的 classpath 必须**完全一致**才能命中（包括
-        // 顺序、$APP_HOME 这种相对引用与绝对路径的差异）。我们把启动脚本里
-        // 那行 CLASSPATH=... 抠出来，把里面的 $APP_HOME 替换成真实绝对路径，
-        // 用这个 cp 跑归档。
+        // Pull CLASSPATH out of the start script and reuse it verbatim:
+        // CDS requires that the archive-time classpath matches the runtime
+        // classpath byte-for-byte (order, $APP_HOME-vs-absolute, all matter).
+        // We grab the CLASSPATH= line, substitute $APP_HOME with the real
+        // absolute path, and feed that exact cp into the archival run.
         val classpathLine = launcher.readLines().firstOrNull { it.startsWith("CLASSPATH=") }
-            ?: error("启动脚本没有 CLASSPATH 行")
+            ?: error("CLASSPATH line not found in start script")
         val cp = classpathLine
             .removePrefix("CLASSPATH=")
             .replace("\$APP_HOME", installRoot.absolutePath)
 
-        // 已存在的 jsa 先删掉，避免 JVM 检测到既有归档拒绝重建
+        // Remove any existing jsa so the JVM does not refuse to overwrite it.
         jsaFile.get().asFile.delete()
 
-        // 归档命中率取决于「这次跑」加载的类与「以后真实运行」加载的类
-        // 重叠程度。`--help` 只走 clikt 就退出，根本不加载 Kotlin scripting
-        // host —— 而后者才是 ktx 真正的重头戏（每次 run 都会用）。
-        // 用 `-e 'Unit'` 触发完整 scripting host 初始化 + 一次脚本编译，
-        // 让 jsa 把那些重型类全录进去。
         commandLine(
             javaLauncher.get().executablePath.asFile.absolutePath,
             "-XX:ArchiveClassesAtExit=${jsaFile.get().asFile.absolutePath}",

@@ -4,12 +4,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * 单测覆盖几个关键边界：
- *   1. shebang 不影响扫描；
- *   2. Toolchain 注解可与其他 @file: 注解共存且顺序无关；
- *   3. 行注释 / 块注释跳过；
- *   4. 没有 Toolchain 时返回 EMPTY；
- *   5. 字符串里出现 "Toolchain" 不会误伤（因为 head 区域结束前尚未进入字符串字面量场景）。
+ * Tests covering several edge cases:
+ *   1. shebang doesn't affect scanning;
+ *   2. Toolchain coexists with other @file: annotations regardless of order;
+ *   3. line and block comments are skipped;
+ *   4. EMPTY is returned when no Toolchain is present;
+ *   5. the word "Toolchain" inside a string literal does not cause false
+ *      positives (the head section ends before any string literal context).
  */
 class ToolchainHeaderScannerTest {
 
@@ -47,9 +48,9 @@ class ToolchainHeaderScannerTest {
     @Test
     fun `skips line and block comments before annotations`() {
         val src = """
-            // 文件级说明
-            /* 这里有一段
-               跨行块注释 */
+            // file-level note
+            /* this is a
+               multi-line block comment */
             @file:Toolchain(kotlin = "2.2.0")
             println("hi")
         """.trimIndent()
@@ -58,7 +59,8 @@ class ToolchainHeaderScannerTest {
 
     @Test
     fun `stops scanning when entering script body`() {
-        // 即使代码体里再写 @file:Toolchain（实际写不写都不合法），扫描器也不应越过 head。
+        // Even if `@file:Toolchain` reappears in the body (which would not be
+        // valid anyway), the scanner must not cross into the body.
         val src = """
             @file:DependsOn("a:b:1")
             println("hello")

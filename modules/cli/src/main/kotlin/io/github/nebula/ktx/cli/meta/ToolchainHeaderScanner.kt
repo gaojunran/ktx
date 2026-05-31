@@ -4,7 +4,8 @@ import java.nio.file.Path
 import kotlin.io.path.bufferedReader
 
 /**
- * 脚本顶部声明的工具链信息。空字段表示用户未指定，沿用默认值。
+ * Toolchain info declared at the top of a script. Empty fields mean the user
+ * did not specify them; defaults apply.
  */
 data class ScriptToolchain(
     val kotlin: String,
@@ -16,22 +17,27 @@ data class ScriptToolchain(
 }
 
 /**
- * 在「调编译器之前」用纯文本扫描脚本头部，找出 `@file:Toolchain(...)`。
+ * Plain-text scan of a script header to find `@file:Toolchain(...)`,
+ * performed **before invoking the compiler**.
  *
- * 这是「先有鸡还是先有蛋」问题的解法：注解里声明的 kotlin 版本本身决定
- * 用哪个 Kotlin 编译器去编译这个脚本，所以读取必须独立于编译器。
+ * This solves a chicken-and-egg problem: the kotlin version declared in the
+ * annotation itself decides which Kotlin compiler to use, so reading it must
+ * be independent of the compiler.
  *
- * 扫描规则：
- *   - shebang（首行 `#!`）跳过。
- *   - 空行、`//` 行注释、`/* ... */` 块注释跳过。
- *   - 多个 `@file:` 注解可在 head 区域连续出现。
- *   - 一旦遇到 head 区域之外的行（普通代码、import 等），扫描停止。
+ * Scanning rules:
+ *   - shebang (first-line `#!`) is skipped;
+ *   - blank lines, `//` line comments, and `/* ... */` block comments are skipped;
+ *   - multiple `@file:` annotations may appear consecutively in the header;
+ *   - once a non-header line (regular code, import, etc.) is encountered,
+ *     scanning stops.
  *
- * 我们 **不** 试图实现一个完整 Kotlin 解析器：保守地按行处理，
- * 失败时回退到「未声明 Toolchain」即可，实际负担由编译器再报。
+ * We **do not** attempt a full Kotlin parser: we process line by line with a
+ * conservative strategy, falling back to "no Toolchain declared" on failure
+ * and letting the compiler report any actual issues.
  *
- * 解析的容错性：`@file:Toolchain` 内部允许跨多行（虽然样例脚本一般写一行），
- * 通过括号配对累计到完整一段后再做 KV 解析。
+ * Forgiving parsing: `@file:Toolchain` may span multiple lines (though sample
+ * scripts usually fit on one). We accumulate by paren matching until a complete
+ * segment is collected before doing the KV parse.
  */
 object ToolchainHeaderScanner {
 
@@ -54,10 +60,10 @@ object ToolchainHeaderScanner {
             val raw = lines.next()
             val line = raw.trim()
 
-            // Shebang 仅出现在第一行；这里用宽松检查，第二行起的 #! 没有意义但也不害事。
+            // Shebang only appears on the first line; the loose check here is harmless on later lines.
             if (line.startsWith("#!")) continue
 
-            // 块注释跨行处理。
+            // Multi-line block comment handling.
             var cursor = line
             if (inBlockComment) {
                 val end = cursor.indexOf("*/")
@@ -65,7 +71,7 @@ object ToolchainHeaderScanner {
                 cursor = cursor.substring(end + 2).trimStart()
                 inBlockComment = false
             }
-            // 同行内可能有多段块注释，朴素处理一段就够：再遇到嵌套就放弃扫描。
+            // A line may contain multiple block comments; one pass is enough. Give up on nested ones.
             cursor = stripInlineBlockComment(cursor) { inBlockComment = true } ?: continue
 
             if (cursor.isEmpty()) continue
@@ -94,19 +100,19 @@ object ToolchainHeaderScanner {
             }
 
             if (cursor.startsWith("@file:")) {
-                // 其他 @file: 注解（DependsOn 等）——继续扫，不打断。
+                // Other @file: annotations (DependsOn etc.); keep scanning.
                 continue
             }
 
-            // 真正的代码开始，head 区域结束。
+            // Real code begins, header section ends.
             break
         }
 
         return ScriptToolchain.EMPTY
     }
 
-    // 移除当前行内成对出现的块注释（slash-star 到 star-slash）；
-    // 遇到不闭合的开符号时通过回调标记进入块注释。
+    // Strip paired block comments (slash-star to star-slash) on the current line;
+    // signal an unmatched opener via the callback to enter block-comment mode.
     private fun stripInlineBlockComment(line: String, onBlockOpen: () -> Unit): String? {
         var s = line
         while (true) {

@@ -5,15 +5,17 @@ import kotlin.io.path.exists
 import kotlin.io.path.isExecutable
 
 /**
- * 一份已安装的 JDK。
+ * An installed JDK.
  *
- * 不持有版本元数据 —— 元数据由 [ToolchainStore] 维护在 manifest 里，避免每次
- * 实例化都去解析 `release` 文件。
+ * Carries no version metadata — metadata is kept in the [ToolchainStore]
+ * manifest to avoid parsing the `release` file on every instantiation.
  *
- * @property root JDK 根目录（解压后顶层）。**注意**在 macOS 上是
- *   `<store>/<id>/`，里面才是 `Contents/Home/bin/java`。
- * @property platform 这份 JDK 对应的平台（用于决定 `bin/java` 路径）。
- * @property majorVersion 主版本号，如 21、17。
+ * @property root JDK root directory (the top of the extracted archive).
+ *   **Note** on macOS this is `<store>/<id>/`, with `Contents/Home/bin/java`
+ *   nested inside.
+ * @property platform the platform this JDK targets (used to derive the
+ *   `bin/java` path).
+ * @property majorVersion major version, e.g. 21 or 17.
  */
 data class JdkInstall(
     val root: Path,
@@ -21,10 +23,10 @@ data class JdkInstall(
     val majorVersion: Int,
 ) {
 
-    /** `bin/java` 绝对路径，跨平台抽象。 */
+    /** Absolute path of `bin/java`; cross-platform abstraction. */
     val javaBin: Path get() = root.resolve(platform.javaBinRelative())
 
-    /** JAVA_HOME 应当指向的目录（macOS 是 `<root>/Contents/Home`）。 */
+    /** Where JAVA_HOME should point (`<root>/Contents/Home` on macOS). */
     val javaHome: Path get() = when (platform.os) {
         Platform.Os.MAC -> root.resolve("Contents/Home")
         else -> root

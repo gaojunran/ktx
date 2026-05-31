@@ -5,12 +5,13 @@ import com.github.ajalt.clikt.parameters.arguments.argument
 import io.github.nebula.ktx.toolchain.ToolchainStore
 
 /**
- * `ktx toolchain` 子命令组：管理 ktx 自己下载的 JDK。
+ * `ktx toolchain` subcommand group: manage JDKs that ktx itself downloaded.
  *
- * 子命令：
- *   - `ktx toolchain list`：列出所有已装版本
- *   - `ktx toolchain install <major>`：装一个 LTS 主版本（如 21、17）
- *   - `ktx toolchain path <major>`：打印 `bin/java` 绝对路径，方便 shell 用
+ * Subcommands:
+ *   - `ktx toolchain list`: list all installed versions
+ *   - `ktx toolchain install <major>`: install an LTS major (e.g. 21, 17)
+ *   - `ktx toolchain path <major>`: print the absolute `bin/java` path,
+ *     handy for shell use
  */
 class ToolchainCommand : CliktCommand(name = "toolchain") {
     override fun run() = Unit
@@ -21,7 +22,7 @@ class ToolchainListCommand : CliktCommand(name = "list") {
         val store = ToolchainStore()
         val entries = store.list()
         if (entries.isEmpty()) {
-            echo("（尚未安装任何 JDK）")
+            echo("(no JDK installed yet)")
             return
         }
         for (e in entries) {
@@ -31,23 +32,23 @@ class ToolchainListCommand : CliktCommand(name = "list") {
 }
 
 class ToolchainInstallCommand : CliktCommand(name = "install") {
-    private val majorArg by argument(name = "MAJOR", help = "JDK 主版本号，如 21 / 17")
+    private val majorArg by argument(name = "MAJOR", help = "JDK major version, e.g. 21 / 17")
 
     override fun run() {
-        val major = majorArg.toIntOrNull() ?: error("主版本必须是整数：$majorArg")
+        val major = majorArg.toIntOrNull() ?: error("major version must be an integer: $majorArg")
         val store = ToolchainStore()
         val install = store.install(major)
-        echo("已安装 JDK $major：${install.javaHome}")
+        echo("installed JDK $major: ${install.javaHome}")
     }
 }
 
 class ToolchainPathCommand : CliktCommand(name = "path") {
-    private val majorArg by argument(name = "MAJOR", help = "JDK 主版本号")
+    private val majorArg by argument(name = "MAJOR", help = "JDK major version")
 
     override fun run() {
-        val major = majorArg.toIntOrNull() ?: error("主版本必须是整数：$majorArg")
+        val major = majorArg.toIntOrNull() ?: error("major version must be an integer: $majorArg")
         val store = ToolchainStore()
-        val install = store.find(major) ?: error("未安装 JDK $major（先 `ktx toolchain install $major`）")
+        val install = store.find(major) ?: error("JDK $major not installed (run `ktx toolchain install $major` first)")
         echo(install.javaBin.toAbsolutePath().toString())
     }
 }

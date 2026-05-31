@@ -25,43 +25,46 @@ import kotlin.system.exitProcess
 /**
  * `ktx run <script> [script-args...]`
  *
- * 当 `<script>` 是 `-` 时，从 stdin 读取脚本源码（参考 `uv run -` / `bun run -`）。
+ * When `<script>` is `-`, read script source from stdin (similar to
+ * `uv run -` / `bun run -`).
  *
- * 选项：
- *   - `--frozen`：仅按 `<script>.lock` 解析依赖，禁止联网（CI 友好）；缺
- *     lockfile 直接报错。
- *   - `--lock`：在线解析依赖并写/刷新 `<script>.lock`，再正常执行脚本。
- *   - `--daemon` / 环境变量 `KTX_DAEMON=1`：通过 ktx daemon 跑，避免编译器
- *     冷启动开销（Phase 2.1 起）。daemon 不在跑时自动 fork。
+ * Options:
+ *   - `--frozen`: resolve dependencies only from `<script>.lock`, no network
+ *     access (CI-friendly); errors out if no lockfile is present.
+ *   - `--lock`: resolve online and write/refresh `<script>.lock` before
+ *     running the script normally.
+ *   - `--daemon` / env var `KTX_DAEMON=1`: run via the ktx daemon, avoiding
+ *     compiler cold start (since Phase 2.1). The daemon is auto-forked when
+ *     not already running.
  *
- * `--frozen` / `--lock` 与 `--daemon` 互斥（Phase 2.1 daemon 暂不支持注入
- * 自定义 resolver；Phase 2.2 接通）。
+ * `--frozen` / `--lock` are mutually exclusive with `--daemon` (Phase 2.1
+ * daemon does not yet support custom resolver injection; Phase 2.2 will).
  */
 class RunCommand : CliktCommand(name = "run") {
 
     private val log = LoggerFactory.getLogger("ktx.cli.run")
 
-    private val frozen by option("--frozen", help = "仅按 lockfile 解析依赖，禁止联网").flag()
-    private val refreshLock by option("--lock", help = "在线运行并刷新 lockfile").flag()
+    private val frozen by option("--frozen", help = "Resolve only from lockfile; no network").flag()
+    private val refreshLock by option("--lock", help = "Run online and refresh the lockfile").flag()
     private val daemon by option(
         "--daemon",
-        help = "通过 ktx daemon 跑（消除编译器冷启动）。也可设环境变量 KTX_DAEMON=1。",
+        help = "Run via ktx daemon (eliminates compiler cold start). Also enabled by KTX_DAEMON=1.",
     ).flag(default = System.getenv("KTX_DAEMON") == "1")
 
     private val forwardStdin by option(
         "--forward-stdin",
-        help = "把 ktx 自身 stdin 流式转发给 daemon 中的脚本（默认关，因为开了" +
-            "会让进程 shutdown 等 stdin read 解开，多 ~300ms 退出延迟）。",
+        help = "Stream ktx's own stdin to the script in the daemon (off by default; " +
+            "enabling this delays process shutdown by ~300ms while waiting for stdin reads to unblock).",
     ).flag(default = System.getenv("KTX_FORWARD_STDIN") == "1")
 
     private val scriptArg by argument(
         name = "SCRIPT",
-        help = "脚本路径，或 `-` 表示从标准输入读取",
+        help = "Script path, or `-` to read from stdin",
     )
-    private val scriptArgs by argument(name = "ARGS", help = "传给脚本的参数").multiple()
+    private val scriptArgs by argument(name = "ARGS", help = "Arguments forwarded to the script").multiple()
 
     override fun run() {
-        require(!(frozen && refreshLock)) { "--frozen 与 --lock 互斥" }
+        require(!(frozen && refreshLock)) { "--frozen and --lock are mutually exclusive" }
 
         if (daemon) {
             runViaDaemon()
@@ -71,8 +74,8 @@ class RunCommand : CliktCommand(name = "run") {
         val runner = ScriptRunner()
         val result = when {
             scriptArg == "-" -> {
-                require(!frozen) { "stdin 模式不支持 --frozen（没有对应的 lockfile）" }
-                require(!refreshLock) { "stdin 模式不支持 --lock" }
+                require(!frozen) { "stdin mode does not support --frozen (no lockfile to bind to)" }
+                require(!refreshLock) { "stdin mode does not support --lock" }
                 val source = System.`in`.bufferedReader().readText()
                 runner.runInline(source, scriptArgs.toTypedArray(), virtualName = "<stdin>")
             }
@@ -88,8 +91,9 @@ class RunCommand : CliktCommand(name = "run") {
         val (resolverMode, lockfilePath) = pickResolver()
 
         val exitCode = if (scriptArg == "-") {
-            // `ktx run -` 语义：从 stdin 读脚本源码，inline 跑。stdin 不会
-            // 再当数据传给脚本（已被读光当源码用了）。这是 Phase 1 起的语义。
+            // `ktx run -` semantics: read script source from stdin and run inline.
+            // stdin is consumed entirely as source; it cannot also be passed
+            // to the script as data. This has been the behavior since Phase 1.
             val source = System.`in`.bufferedReader().readText()
             client.run(
                 scriptPath = null,
@@ -101,10 +105,11 @@ class RunCommand : CliktCommand(name = "run") {
         } else {
             val path = resolveScript(scriptArg)
             preflightToolchain(path)
-            // Phase 2.3：把 ktx 进程自身的 stdin 流式转发给 daemon。
-            // 默认关：开启 pump 线程会让 ktx 进程 shutdown 时等 stdin read
-            // 解开 native 系统调用，引入 ~300ms 退出延迟。需要的用户用
-            // --forward-stdin 或 KTX_FORWARD_STDIN=1 显式开启。
+            // Phase 2.3: forward ktx's own stdin to the daemon as a stream.
+            // Disabled by default: the pump thread keeps a stdin read in
+            // a native syscall during shutdown, adding ~300ms to exit.
+            // Users who need it must opt in via --forward-stdin or
+            // KTX_FORWARD_STDIN=1.
             client.run(
                 scriptPath = path,
                 inlineSource = null,
@@ -118,42 +123,48 @@ class RunCommand : CliktCommand(name = "run") {
     }
 
     /**
-     * 把 CLI 选项 → daemon 协议 ResolverMode + 可选 lockfile 路径。
+     * Translate CLI options into a daemon-protocol ResolverMode plus an
+     * optional lockfile path.
      *
-     * Phase 2.3 起：--lock 走 daemon 端的 LOCK 模式，daemon 内禁用编译缓存
-     * 跑一遍脚本，完事写 lockfile。
+     * Since Phase 2.3: `--lock` uses the daemon's LOCK mode, which runs the
+     * script once with the compiler cache disabled and writes the lockfile
+     * afterwards.
      */
     private fun pickResolver(): Pair<io.github.nebula.ktx.proto.v1.ResolverMode, Path?> {
         if (frozen) {
-            if (scriptArg == "-") error("stdin 模式不支持 --frozen（没有对应的 lockfile）")
+            if (scriptArg == "-") error("stdin mode does not support --frozen (no lockfile to bind to)")
             val path = resolveScript(scriptArg)
             val lockPath = Lockfile.pathFor(path)
             require(lockPath.exists()) {
-                "frozen 模式需要 lockfile，但找不到：$lockPath。先运行 `ktx lock $scriptArg` 生成。"
+                "frozen mode requires a lockfile, but none was found: $lockPath. Run `ktx lock $scriptArg` first."
             }
             return io.github.nebula.ktx.proto.v1.ResolverMode.FROZEN to lockPath
         }
         if (refreshLock) {
-            if (scriptArg == "-") error("stdin 模式不支持 --lock")
-            // LOCK 模式 daemon 内部按照脚本路径自己算 lockfile 路径，
-            // CLI 不必传（daemon 端 LockingFlow.lockAndOptionallyRun 会用
-            // Lockfile.pathFor）。
+            if (scriptArg == "-") error("stdin mode does not support --lock")
+            // In LOCK mode the daemon computes the lockfile path from the
+            // script path itself, so the CLI does not need to send it (the
+            // daemon-side LockingFlow.lockAndOptionallyRun uses
+            // Lockfile.pathFor).
             return io.github.nebula.ktx.proto.v1.ResolverMode.LOCK to null
         }
         return io.github.nebula.ktx.proto.v1.ResolverMode.NORMAL to null
     }
 
     /**
-     * 根据脚本声明的 `@file:Toolchain(jdk = ...)` 决定要哪个 JDK 主版本：
-     *   - 脚本未声明 → 当前 JVM 主版本（不动 JDK，daemon 用启动 ktx 的那个）
-     *   - 声明了但与当前一致 → 同上
-     *   - 声明的版本不同 → 找已装 JDK；没装就装一个；用它的 java 启 daemon
+     * Pick the JDK major version based on `@file:Toolchain(jdk = ...)`:
+     *   - script doesn't declare -> current JVM major (no JDK switch; the
+     *     daemon uses whatever JDK ktx itself runs on)
+     *   - declared but matches current -> same as above
+     *   - different version declared -> look up the installed JDK; install
+     *     it if missing; use its java to launch the daemon
      *
-     * 返回 (主版本号, java 可执行文件路径或 null)。null 表示用当前 JVM。
+     * Returns (major version, java executable path or null). null means
+     * "use the current JVM".
      */
     private fun pickToolchain(): Pair<Int, String?> {
         val current = Runtime.version().feature()
-        if (scriptArg == "-") return current to null  // stdin 模式无脚本可扫描
+        if (scriptArg == "-") return current to null  // no script to scan in stdin mode
 
         val path = java.nio.file.Path.of(scriptArg).takeIf { it.toFile().isFile } ?: return current to null
         val tc = ToolchainHeaderScanner.scan(path)
@@ -163,7 +174,7 @@ class RunCommand : CliktCommand(name = "run") {
 
         val store = ToolchainStore()
         val install = store.find(requested) ?: run {
-            log.info("脚本要求 JDK {}，本地未装，开始下载", requested)
+            log.info("script requires JDK {}, not installed locally, downloading", requested)
             store.install(requested)
         }
         return requested to install.javaBin.toAbsolutePath().toString()
@@ -171,8 +182,9 @@ class RunCommand : CliktCommand(name = "run") {
 
     private fun runFile(runner: ScriptRunner): ResultWithDiagnostics<*> {
         val path = resolveScript(scriptArg)
-        // 如果脚本要求一个不同的 JDK，下面这行会 re-exec 当前进程并不返回。
-        // 没声明、或与当前 JVM 匹配，则继续。
+        // If the script requires a different JDK, the line below re-execs
+        // the current process and never returns. If no toolchain is
+        // declared or it matches the current JVM, execution continues.
         ToolchainDispatcher.dispatchIfNeeded(path)
         preflightToolchain(path)
         val args = scriptArgs.toTypedArray()
@@ -181,8 +193,8 @@ class RunCommand : CliktCommand(name = "run") {
             frozen -> {
                 val lockPath = Lockfile.pathFor(path)
                 val lockfile = Lockfile.read(lockPath)
-                    ?: error("frozen 模式需要 lockfile，但找不到：$lockPath。先运行 `ktx lock $scriptArg` 生成。")
-                log.info("frozen 模式：使用 lockfile {}（{} 个顶层依赖）", lockPath.fileName, lockfile.directs.size)
+                    ?: error("frozen mode requires a lockfile, but none was found: $lockPath. Run `ktx lock $scriptArg` first.")
+                log.info("frozen mode: using lockfile {} ({} direct deps)", lockPath.fileName, lockfile.directs.size)
                 runner.run(path, args, resolver = FrozenResolver(lockfile))
             }
             refreshLock -> {
@@ -199,20 +211,21 @@ class RunCommand : CliktCommand(name = "run") {
 
     private fun resolveScript(arg: String): Path {
         val path = Path(arg)
-        require(path.exists() && path.isRegularFile()) { "脚本不存在：$arg" }
+        require(path.exists() && path.isRegularFile()) { "script not found: $arg" }
         return path
     }
 
     /**
-     * Phase 1.3：仅做工具链注解中 Kotlin 版本的「前置校验」。
-     * `jdk` 字段已由 [ToolchainDispatcher] 在更早处理过（不匹配则 re-exec）。
+     * Phase 1.3: pre-flight check on the Kotlin version declared by the
+     * toolchain annotation only. The `jdk` field is handled earlier by
+     * [ToolchainDispatcher] (re-exec on mismatch).
      */
     private fun preflightToolchain(scriptPath: Path) {
         val tc = ToolchainHeaderScanner.scan(scriptPath)
         if (tc.kotlin.isNotEmpty() && tc.kotlin != BuildInfo.kotlinVersion) {
             throw IllegalStateException(
-                "脚本声明 Kotlin ${tc.kotlin}，但当前 CLI 自带 ${BuildInfo.kotlinVersion}；" +
-                    "多 Kotlin 版本支持将在 Phase 2 通过 daemon 路由提供。",
+                "script declares Kotlin ${tc.kotlin} but the current CLI ships ${BuildInfo.kotlinVersion}; " +
+                    "multi-Kotlin-version support is provided via daemon routing in Phase 2.",
             )
         }
     }

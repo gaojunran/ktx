@@ -12,18 +12,18 @@ import kotlin.io.path.exists
 import kotlin.io.path.listDirectoryEntries
 
 /**
- * 管理 ktx 自己下载的 JDK：列举、安装、按主版本查找。
+ * Manages JDKs that ktx has downloaded itself: list, install, lookup by major version.
  *
- * 目录布局：
+ * Directory layout:
  * ```
- * $XDG_DATA_HOME/ktx/jdks/        （回退 ~/.local/share/ktx/jdks/）
- *   temurin-21.0.11+10/           ← JDK root（macOS 内含 Contents/Home/）
+ * $XDG_DATA_HOME/ktx/jdks/        (falls back to ~/.local/share/ktx/jdks/)
+ *   temurin-21.0.11+10/           <- JDK root (macOS contains Contents/Home/ inside)
  *   temurin-17.0.13+11/
- *   manifest.tsv                  ← 已安装版本索引
+ *   manifest.tsv                  <- index of installed versions
  * ```
  *
- * `manifest.tsv` 用最简 TSV 格式（id\tmajor\tsemver），每行一个 JDK。
- * 选 TSV 而非 TOML 是因为这里完全不需要嵌套结构，TSV 解析 5 行代码搞定。
+ * `manifest.tsv` is the simplest TSV format (id\tmajor\tsemver), one JDK per line.
+ * TSV over TOML because there's no nested structure here; parsing is 5 lines of code.
  */
 class ToolchainStore(
     private val root: Path = defaultRoot(),
@@ -39,7 +39,7 @@ class ToolchainStore(
 
     private val manifestFile: Path get() = root.resolve("manifest.tsv")
 
-    /** 已安装的 JDK 列表，按主版本升序。 */
+    /** Installed JDKs, sorted by major version ascending. */
     fun list(): List<Entry> {
         if (!manifestFile.exists()) return emptyList()
         return manifestFile.bufferedReader().useLines { lines ->
@@ -47,7 +47,7 @@ class ToolchainStore(
         }
     }
 
-    /** 查找指定主版本是否已安装。 */
+    /** Look up whether the given major version is already installed. */
     fun find(major: Int): JdkInstall? {
         val entry = list().firstOrNull { it.major == major } ?: return null
         val install = JdkInstall(
@@ -59,15 +59,16 @@ class ToolchainStore(
     }
 
     /**
-     * 装一份「主版本 = [major]」的 JDK；如果已经装过相同 semver 直接返回。
+     * Install a JDK with major version = [major]; returns the existing one if
+     * the same semver is already present.
      *
-     * 流程：
-     *   1. 调 Adoptium API 拿元数据；
-     *   2. 已装 → 直接返回；
-     *   3. 下载到临时文件，校验 sha256；
-     *   4. 解压到 `<store>/<id>/`；
-     *   5. 写 manifest 一行；
-     *   6. 验证 `bin/java` 存在且可执行。
+     * Flow:
+     *   1. call Adoptium API for metadata;
+     *   2. already installed → return immediately;
+     *   3. download to a temp file, verify sha256;
+     *   4. extract to `<store>/<id>/`;
+     *   5. append a manifest line;
+     *   6. verify `bin/java` exists and is executable.
      */
     fun install(major: Int): JdkInstall {
         val asset = client.resolveLatestGa(major, platform)
@@ -75,20 +76,20 @@ class ToolchainStore(
 
         val installDir = root.resolve(id)
         if (list().any { it.id == id } && installDir.exists()) {
-            log.info("JDK 已安装：{}", id)
+            log.info("JDK already installed: {}", id)
             return JdkInstall(installDir, platform, major)
         }
 
         val archive = root.resolve("$id${platform.archiveSuffix}")
-        log.info("从 Adoptium 下载 {} ({} MB)", asset.fileName, asset.size / 1024 / 1024)
+        log.info("downloading {} from Adoptium ({} MB)", asset.fileName, asset.size / 1024 / 1024)
         client.download(asset, archive)
 
         try {
-            log.info("解压到 {}", installDir)
+            log.info("extracting to {}", installDir)
             installDir.createDirectories()
             Archive.extract(archive, installDir)
         } catch (e: Exception) {
-            // 解压失败，清理半成品
+            // Extraction failed; clean up the partial install
             installDir.toFile().deleteRecursively()
             throw e
         } finally {
@@ -97,15 +98,15 @@ class ToolchainStore(
 
         val install = JdkInstall(installDir, platform, major)
         require(install.isUsable()) {
-            "解压后 ${install.javaBin} 不可执行。归档可能损坏或 ktx 解压器有 bug。"
+            "${install.javaBin} is not executable after extraction. The archive may be corrupt or ktx's extractor has a bug."
         }
         appendManifest(Entry(id = id, major = major, semver = asset.semver))
-        log.info("安装完成：{} -> {}", id, install.javaHome)
+        log.info("install complete: {} -> {}", id, install.javaHome)
         return install
     }
 
     /**
-     * 把 [entry] 追加到 manifest（去重）。文件不存在则新建。
+     * Append [entry] to the manifest (deduplicated). Creates the file if missing.
      */
     private fun appendManifest(entry: Entry) {
         val existing = if (manifestFile.exists()) list() else emptyList()

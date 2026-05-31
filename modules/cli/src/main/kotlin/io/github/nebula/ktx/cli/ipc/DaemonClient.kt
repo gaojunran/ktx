@@ -18,13 +18,16 @@ import java.nio.channels.SocketChannel
 import java.nio.file.Path
 
 /**
- * CLI 端连接 daemon、发请求、读取流式响应。
+ * CLI-side client that connects to the daemon, sends requests, and reads
+ * streaming responses.
  *
- * Phase 2.1 接口：每个 [run] / [status] / [shutdown] 调用各开一个新连接，
- * 一发一收（或一发多收 for run），结束就关。简单、线程安全。
+ * Phase 2.1 contract: each [run] / [status] / [shutdown] call opens a fresh
+ * connection, sends one request, and reads a single response (or a stream
+ * for run), then closes. Simple and thread-safe.
  *
- * 后续 Phase 2.2 引入连接池或多路复用时再优化 —— 当前 daemon 单 client
- * 串行处理，开多连接也没意义。
+ * Phase 2.2 may introduce a connection pool or multiplexing, but as long as
+ * the daemon serializes requests per-client there is no benefit to opening
+ * multiple connections.
  */
 class DaemonClient(
     private val socketPath: Path = DaemonPaths.socketFile(),
@@ -32,13 +35,16 @@ class DaemonClient(
     private val log = LoggerFactory.getLogger("ktx.cli.daemon-client")
 
     /**
-     * 在 daemon 中跑一个脚本，把 stdout / stderr 流式打印到本地，返回 exit code。
+     * Run a script in the daemon, streaming stdout / stderr to the local
+     * console, and return the exit code.
      *
-     * Phase 2.3 起：[stdin] 不再是 ByteArray 一次性，而是 [InputStream] 流式。
-     * 客户端开后台线程从 stdin 一直读字节、打包成 StdinChunk 帧发给 daemon，
-     * 直到读到 EOF。daemon 那边脚本可以边读边等。
+     * Since Phase 2.3: [stdin] is a streaming [InputStream] rather than a
+     * single ByteArray. The client spawns a background thread that reads
+     * bytes from stdin and packages them into StdinChunk frames sent to the
+     * daemon, until EOF. The daemon-side script can read incrementally.
      *
-     * 失败（连接异常、协议不匹配等）抛 IOException，调用方自行决定是否回退。
+     * On failure (connection error, protocol mismatch, ...) throws IOException;
+     * the caller decides whether to fall back.
      */
     fun run(
         scriptPath: Path?,
@@ -49,7 +55,7 @@ class DaemonClient(
         lockfilePath: Path? = null,
         stdin: java.io.InputStream? = null,
     ): Int {
-        require((scriptPath == null) xor (inlineSource == null)) { "scriptPath / inlineSource 二选一" }
+        require((scriptPath == null) xor (inlineSource == null)) { "exactly one of scriptPath / inlineSource is required" }
 
         connect().use { ch ->
             val out = Channels.newOutputStream(ch)
@@ -66,7 +72,7 @@ class DaemonClient(
                     if (lockfilePath != null) it.lockfilePath = lockfilePath.toAbsolutePath().toString()
                 }
                 .build()
-            // RUN 帧
+            // RUN frame
             Frames.write(
                 out,
                 RequestEnvelope.newBuilder()
@@ -75,19 +81,22 @@ class DaemonClient(
                     .build(),
             )
 
-            // 启 stdin pump 线程：从用户 stdin 读字节、打 StdinChunk 帧发出去。
-            // 没 stdin 源（null）时不启线程，daemon 那边收到的就是空 pipe，
-            // 脚本 readLine 会立即拿 null。
+            // Start the stdin pump thread: read bytes from the user's stdin
+            // and ship them as StdinChunk frames. With no stdin source (null)
+            // we skip the thread; the daemon then sees an empty pipe and any
+            // readLine() in the script returns null immediately.
             //
-            // 写帧需要与「应答 thread」（即当前线程读 RunEvent）共享 socket 输出端 ——
-            // 互斥保护。Frames.write 内部已经写完一帧再返回，所以一把锁够用。
+            // Writing frames must coexist with the reply thread (the current
+            // thread reading RunEvents) on the same socket output, guarded
+            // by a mutex. Frames.write writes a complete frame before
+            // returning, so a single lock is enough.
             val outLock = Any()
             val pumpThread = if (stdin != null) startStdinPump(stdin, out, outLock) else null
 
             try {
                 while (true) {
                     val resp = Frames.read(input, ResponseEnvelope.parser())
-                        ?: error("daemon 提前关闭连接（脚本可能运行到一半 daemon 崩溃）")
+                        ?: error("daemon closed connection prematurely (script may have been interrupted by a daemon crash)")
                     when (resp.bodyCase) {
                         ResponseEnvelope.BodyCase.RUN_EVENT -> {
                             val ev = resp.runEvent
@@ -104,7 +113,7 @@ class DaemonClient(
                         }
                         ResponseEnvelope.BodyCase.ERROR ->
                             error("daemon error: ${resp.error.message}")
-                        else -> error("意外的响应类型：${resp.bodyCase}")
+                        else -> error("unexpected response type: ${resp.bodyCase}")
                     }
                 }
             } finally {
@@ -116,8 +125,10 @@ class DaemonClient(
     }
 
     /**
-     * 从 [stdin] 一直读字节、按 4KB 一段打 StdinChunk 帧通过 [out] 发出去。
-     * 读到 EOF 时发 eof=true 收尾。socket 关闭等异常静默吞掉（主线程会先发现）。
+     * Continuously read bytes from [stdin] and ship them through [out] as
+     * StdinChunk frames in 4 KB segments. On EOF, send a final frame with
+     * eof=true. Socket-closure exceptions are swallowed silently (the main
+     * thread will detect them first).
      */
     private fun startStdinPump(
         stdin: java.io.InputStream,
@@ -155,9 +166,12 @@ class DaemonClient(
                 }
             }
         } catch (_: Throwable) {
-            // 任何异常都安静吞掉：常见情况是脚本根本不读 stdin、daemon 早就发完
-            // ExitEvent 关连接了；pump 试图写 socket 抛各类 channel-closed
-            // 异常都属正常退出路径。主线程已经在收 ExitEvent，不依赖 pump 报错。
+            // Swallow any exception silently: the common case is that the
+            // script never reads stdin and the daemon has already sent
+            // ExitEvent and closed the connection; the pump trying to write
+            // to the socket then sees channel-closed errors as a normal exit
+            // path. The main thread is responsible for receiving ExitEvent
+            // and does not depend on the pump for error reporting.
         }
     }, "ktx-stdin-pump").apply {
         isDaemon = true
@@ -176,7 +190,7 @@ class DaemonClient(
                     .build(),
             )
             val resp = Frames.read(input, ResponseEnvelope.parser())
-                ?: error("daemon 提前关闭连接")
+                ?: error("daemon closed connection prematurely")
             return resp.status
         }
     }
@@ -192,7 +206,7 @@ class DaemonClient(
                     .setShutdown(ShutdownRequest.getDefaultInstance())
                     .build(),
             )
-            // 读 ShutdownResponse 当作确认；忽略内容
+            // Read ShutdownResponse as acknowledgement; ignore content.
             Frames.read(input, ResponseEnvelope.parser())
         }
     }

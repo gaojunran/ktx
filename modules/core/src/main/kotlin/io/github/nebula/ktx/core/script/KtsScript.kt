@@ -20,29 +20,34 @@ import kotlin.script.experimental.jvm.dependenciesFromClassContext
 import kotlin.script.experimental.jvm.jvm
 
 /**
- * ktx 自定义 ScriptDefinition。
+ * ktx's custom ScriptDefinition.
  *
- * 设计原则是「复用而非 fork」：沿用官方 [MainKtsConfigurator] 处理
- * `@file:DependsOn` 等 main-kts 已经支持的注解，仅追加 `@file:Toolchain`
- * 的类型可见性（实际值由 CLI 端预扫描读出）。
+ * Design principle: "reuse, don't fork". The official [MainKtsConfigurator]
+ * handles `@file:DependsOn` and other annotations already supported by main-kts;
+ * we only add type visibility for `@file:Toolchain` (whose value is read out by
+ * the CLI's pre-scan).
  *
- * **可注入 resolver**：通过 [resolverOverride] ThreadLocal 实现。`@KotlinScript`
- * 注解要求 compilationConfiguration class 是 0 参可实例化的，没法通过构造
- * 器传 resolver。我们用 ThreadLocal 旁路：调用方在执行 `BasicJvmScriptingHost.eval`
- * 之前 set 当前线程的 resolver；[KtsScriptDefinition] 实例化时读它，得到
- * 注入的版本。
+ * **Injectable resolver**: implemented via the [resolverOverride] ThreadLocal.
+ * `@KotlinScript` requires compilationConfiguration to be a zero-arg-constructible
+ * class, so we cannot pass a resolver through its constructor. We use a ThreadLocal
+ * side channel: callers set the resolver on the current thread before invoking
+ * `BasicJvmScriptingHost.eval`; [KtsScriptDefinition] reads it on instantiation
+ * and gets the injected version.
  *
- * 这种 ThreadLocal 模式不优雅，但在脚本编译这种「单线程、单脚本一个 host」
- * 的场景下完全够用。
+ * This ThreadLocal pattern isn't elegant, but for script compilation
+ * (single-threaded, one host per script) it's perfectly sufficient.
  *
- * **EvaluationConfiguration 的必要性（Phase 2.4）**：
- *   - ktx run 模式下，ScriptRunner 显式调 createJvmEvaluationConfigurationFromTemplate
- *     + constructorArgs(scriptArgs)，所以 KtsScript(args) 拿到正确入参。
- *   - ktx compile 模式下，产物 jar 走 RunnerKt 默认入口，evaluation config
- *     在编译时就要 baked 进 .class —— 这就要求 @KotlinScript 注解里**必须**
- *     声明 evaluationConfiguration = KtsEvaluationConfiguration::class，
- *     里面用 [configureConstructorArgsFromMainArgs] 把 main(String[]) 的
- *     args 自动注入构造器。否则跑产物时报 "wrong number of arguments"。
+ * **Why an EvaluationConfiguration is required (Phase 2.4)**:
+ *   - In `ktx run`, ScriptRunner explicitly calls
+ *     createJvmEvaluationConfigurationFromTemplate + constructorArgs(scriptArgs),
+ *     so KtsScript(args) gets the right arguments.
+ *   - In `ktx compile`, the output jar runs through RunnerKt's default entry point,
+ *     so the evaluation config must be baked into the .class at compile time.
+ *     This means @KotlinScript **must** declare
+ *     evaluationConfiguration = KtsEvaluationConfiguration::class, which uses
+ *     [configureConstructorArgsFromMainArgs] to wire main(String[])'s args into
+ *     the constructor. Otherwise the produced jar fails with "wrong number of
+ *     arguments" at runtime.
  */
 @KotlinScript(
     fileExtension = "kts",
@@ -61,9 +66,9 @@ class KtsScriptDefinition : ScriptCompilationConfiguration(
             Toolchain::class,
         )
         jvm {
-            // wholeClasspath = true：把 KtsScriptDefinition 所在 classloader
-            // 看到的全部 jar 都暴露给脚本，确保 main-kts 注解类与 Toolchain
-            // 都可见。
+            // wholeClasspath = true: expose every jar visible to the
+            // KtsScriptDefinition classloader to the script, so main-kts
+            // annotation classes and Toolchain are all reachable.
             dependenciesFromClassContext(
                 KtsScriptDefinition::class,
                 wholeClasspath = true,
@@ -80,7 +85,7 @@ class KtsScriptDefinition : ScriptCompilationConfiguration(
                 CompilerOptions::class,
                 handler = configurator,
             )
-            // Toolchain 由 CLI 预扫描消费，编译期不需要 handler。
+            // Toolchain is consumed by the CLI's pre-scan; no compile-time handler needed.
         }
         ide {
             acceptedLocations(ScriptAcceptedLocation.Everywhere)
@@ -89,12 +94,14 @@ class KtsScriptDefinition : ScriptCompilationConfiguration(
 )
 
 /**
- * 评估配置：让 KtsScript 的 `args` 构造参数自动从 main(String[]) 注入。
+ * Evaluation configuration: wires KtsScript's `args` constructor parameter
+ * automatically from main(String[]).
  *
- * Phase 2.4 起：声明此 evaluationConfiguration 是 ktx compile 产物 jar 能直接
- * 跑起来的前提。编译产物 .class 里嵌的 KJvmCompiledScript 引用了这个 class，
- * RunnerKt 调 createEvaluationConfigurationFromTemplate 时会用它的钩子把
- * mainArguments 转成 constructorArgs。
+ * Since Phase 2.4: declaring this evaluationConfiguration is the prerequisite
+ * for `ktx compile` output jars to run directly. The KJvmCompiledScript embedded
+ * in the produced .class references this class, and when RunnerKt calls
+ * createEvaluationConfigurationFromTemplate, its hook converts mainArguments
+ * into constructorArgs.
  */
 class KtsEvaluationConfiguration : ScriptEvaluationConfiguration(
     {
@@ -103,10 +110,11 @@ class KtsEvaluationConfiguration : ScriptEvaluationConfiguration(
 )
 
 /**
- * 调用方在 `BasicJvmScriptingHost().eval(...)` 之前 set 这里，可让
- * [KtsScriptDefinition] 用注入的 resolver 替代默认的 `Compound(FileSystem, Maven)`。
+ * Callers can set this before `BasicJvmScriptingHost().eval(...)` to make
+ * [KtsScriptDefinition] use the injected resolver in place of the default
+ * `Compound(FileSystem, Maven)`.
  *
- * 用 [withResolverOverride] 包装，自动负责 set/clear。
+ * Wrap with [withResolverOverride] to handle set/clear automatically.
  */
 @PublishedApi
 internal val resolverOverride: ThreadLocal<ExternalDependenciesResolver?> = ThreadLocal.withInitial { null }

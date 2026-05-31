@@ -8,7 +8,8 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
-    // 仅声明优先使用 settings 中的仓库，但允许全局 init 脚本（如本地镜像）注入。
+    // Prefer settings-declared repositories but tolerate global init-script
+    // injections (e.g. local mirrors).
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
         mavenCentral()
@@ -20,4 +21,3 @@ include(":modules:cli")
 include(":modules:toolchain")
 include(":modules:protocol")
 include(":modules:daemon")
-include(":modules:toolchain")

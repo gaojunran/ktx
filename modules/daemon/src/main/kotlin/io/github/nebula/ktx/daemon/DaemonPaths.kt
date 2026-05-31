@@ -5,24 +5,27 @@ import java.nio.file.Path
 import java.security.MessageDigest
 
 /**
- * daemon 文件系统布局。
+ * Filesystem layout for the daemon.
  *
- * Phase 2.2 起按 [toolchainKey] 分目录：每个 (jdkMajor, protocolVersion)
- * 元组对应一个独立 daemon 实例，互相隔离。
+ * Since Phase 2.2, daemons are partitioned by [toolchainKey]: each
+ * (jdkMajor, protocolVersion) tuple corresponds to an isolated daemon
+ * instance.
  *
- * 目录形如 `~/.cache/ktx/d/<key12>/`，其中 `<key12>` 是 sha256 前 12 位 hex
- * —— 短到不会撞 macOS sun_path 104 字节上限。完整 key 落在 `key.txt`，方便
- * 排错时反查。
+ * The directory looks like `~/.cache/ktx/d/<key12>/`, where `<key12>` is the
+ * first 12 hex characters of the sha256, short enough to fit comfortably
+ * within macOS's 104-byte sun_path limit. The full key is written to
+ * `key.txt` for diagnostic lookup.
  *
- * 兼容：[defaultDaemonDir] 不带 key 参数时仍指向旧的 `~/.cache/ktx/d/`，
- * 用于 status/stop 等没有具体脚本上下文的命令（Phase 2.2 status 默认只看
- * 当前 JVM 对应的 daemon，未来可扩展为枚举所有）。
+ * Compatibility: [defaultDaemonDir] without a key argument still points to
+ * the legacy `~/.cache/ktx/d/`, used by status/stop and similar commands
+ * that have no specific script context (Phase 2.2 status by default only
+ * inspects the current JVM's daemon; future versions may enumerate all).
  */
 object DaemonPaths {
 
     private const val PROTOCOL_VERSION_TAG = "v1"
 
-    /** 旧目录（无路由），用于 status/stop 默认行为。 */
+    /** Legacy directory (no routing); used by default for status/stop. */
     fun defaultDaemonDir(): Path {
         val xdg = System.getenv("XDG_CACHE_HOME")?.takeIf { it.isNotBlank() }
         val base = if (xdg != null) File(xdg) else File(System.getProperty("user.home"), ".cache")
@@ -30,8 +33,9 @@ object DaemonPaths {
     }
 
     /**
-     * 给定 toolchain key 的 daemon 目录。Phase 2.2：key 仅由 jdkMajor + 协议
-     * 版本组成；Phase 2.3 加 kotlin 版本。
+     * Daemon directory for a given toolchain key. Phase 2.2: the key is
+     * derived from jdkMajor + protocol version. Phase 2.3 also folds in the
+     * kotlin version.
      */
     fun daemonDirFor(jdkMajor: Int): Path {
         val key = computeKey(jdkMajor)

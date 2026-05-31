@@ -11,19 +11,21 @@ import kotlin.script.experimental.dependencies.RepositoryCoordinates
 import java.io.File
 
 /**
- * 完全离线的 resolver：只读 [Lockfile]，把坐标映射到 `~/.m2/repository/...`
- * 下的 jar 文件。
+ * Fully offline resolver: reads only the [Lockfile] and maps coordinates to
+ * jar files under `~/.m2/repository/...`.
  *
- * 与 [RecordingResolver] 的关系：record 是「真实 resolve + 旁路记录」，frozen
- * 是「不调用任何真实 resolver」。所以这两个不会同时使用，传给 main-kts 的
- * resolver 链结构也不同：
- *   - 正常模式：`Compound(FileSystem, Recording(Compound(FileSystem, Maven)))`
- *   - frozen 模式：`Compound(FileSystem, Frozen)`
+ * Relationship to [RecordingResolver]: recording does "real resolve + observe
+ * on the side"; frozen does "never invoke a real resolver". They are never
+ * used together, and the resolver chain handed to main-kts differs:
+ *   - normal mode: `Compound(FileSystem, Recording(Compound(FileSystem, Maven)))`
+ *   - frozen mode: `Compound(FileSystem, Frozen)`
  *
- * `addRepository`：frozen 模式下脚本声明的 `@file:Repository(...)` 不应触发
- * 任何网络副作用，统一返回 `false`（表示「我不接受这个仓库」），让 main-kts
- * 把 repository 视作「不被任何 resolver 接受」并继续 —— 实际效果是仓库声明
- * 被忽略。这没问题：frozen 模式下我们已经知道每个 jar 在哪，不需要仓库。
+ * `addRepository`: in frozen mode any `@file:Repository(...)` declared by the
+ * script must not cause network side effects, so we always return `false`
+ * ("I don't accept this repository"), letting main-kts treat the repository as
+ * unaccepted by any resolver and continue — the practical effect is that the
+ * declaration is ignored. That's fine: in frozen mode we already know where
+ * every jar lives, so repositories are irrelevant.
  */
 class FrozenResolver(
     private val lockfile: Lockfile,
@@ -42,16 +44,16 @@ class FrozenResolver(
     ): ResultWithDiagnostics<List<File>> {
         val rels = lockfile.directs[artifactCoordinates]
             ?: return makeFailureResult(
-                "frozen 模式：lockfile 中找不到坐标 $artifactCoordinates。" +
-                    "请先在线运行一次以重建 lockfile，或移除 --frozen。",
+                "frozen mode: coordinate $artifactCoordinates not found in lockfile. " +
+                    "Run online once to rebuild the lockfile, or drop --frozen.",
             )
         val files = rels.map { File(localRepoDir, it) }
         val missing = files.filterNot { it.exists() }
         if (missing.isNotEmpty()) {
             return makeFailureResult(
-                "frozen 模式：本地仓库缺失下列 jar：\n" +
+                "frozen mode: the following jars are missing from the local repository:\n" +
                     missing.joinToString("\n") { "  - ${it.absolutePath}" } +
-                    "\n请先在线运行一次以填充本地 m2 缓存。",
+                    "\nRun online once to populate the local m2 cache.",
             )
         }
         return files.asSuccess()
@@ -79,13 +81,14 @@ class FrozenResolver(
     ): ResultWithDiagnostics<Boolean> = false.asSuccess()
 
     companion object {
-        /** Aether 默认本地仓库就是 `~/.m2/repository`。 */
+        /** Aether's default local repository is `~/.m2/repository`. */
         fun defaultLocalRepoDir(): File =
             File(System.getProperty("user.home"), ".m2/repository")
 
         /**
-         * 把绝对 jar 路径转成「相对 m2 仓库」的字符串。如果路径不在 m2 之下，
-         * 返回 null（调用方自行决定是落绝对路径还是报错）。
+         * Convert an absolute jar path into a string relative to the m2 repo.
+         * Returns null if the path isn't under m2 (the caller decides whether
+         * to fall back to absolute paths or raise an error).
          */
         fun toM2Relative(absJar: File, localRepoDir: File = defaultLocalRepoDir()): String? {
             val a = absJar.absoluteFile.toPath()

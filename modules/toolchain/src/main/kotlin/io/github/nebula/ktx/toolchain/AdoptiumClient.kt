@@ -14,12 +14,14 @@ import kotlin.io.path.deleteIfExists
 import kotlin.io.path.outputStream
 
 /**
- * 调用 Adoptium API v3 解析「给定主版本 + 当前平台」对应的最新 GA JDK 二进制
- * 元数据（下载 URL、文件名、sha256），并下载到指定路径。
+ * Calls the Adoptium API v3 to resolve "latest GA JDK binary for the given
+ * major version + current platform" metadata (download URL, filename, sha256),
+ * then downloads it to a target path.
  *
- * 不做解压（解压由 [ToolchainStore] 调度）。这里只关心 HTTP 与校验和。
+ * Does not extract the archive (extraction is orchestrated by [ToolchainStore]).
+ * This class only deals with HTTP and checksum verification.
  *
- * API 文档：https://api.adoptium.net/q/swagger-ui/
+ * API docs: https://api.adoptium.net/q/swagger-ui/
  */
 class AdoptiumClient(
     private val http: OkHttpClient = defaultClient(),
@@ -29,9 +31,9 @@ class AdoptiumClient(
     private val log = LoggerFactory.getLogger("ktx.toolchain.adoptium")
 
     /**
-     * 查询「主版本 [major] 在 [platform] 上的最新 GA JDK」。
+     * Query "latest GA JDK for major version [major] on [platform]".
      *
-     * 返回值的 [Asset.downloadUrl] 是直链，[Asset.checksum] 是 sha256 hex。
+     * The returned [Asset.downloadUrl] is a direct link, [Asset.checksum] is sha256 hex.
      */
     fun resolveLatestGa(major: Int, platform: Platform): Asset {
         val url = "https://api.adoptium.net/v3/assets/feature_releases/$major/ga" +
@@ -45,23 +47,23 @@ class AdoptiumClient(
         log.debug("GET {}", url)
         val request = Request.Builder().url(url).header("Accept", "application/json").build()
         http.newCall(request).execute().use { response ->
-            require(response.isSuccessful) { "Adoptium API 返回 ${response.code}: ${response.message}" }
-            val body = response.body?.string() ?: error("Adoptium API 响应体为空")
+            require(response.isSuccessful) { "Adoptium API returned ${response.code}: ${response.message}" }
+            val body = response.body?.string() ?: error("empty Adoptium API response body")
             return parseAsset(body, platform, major)
         }
     }
 
     /**
-     * 下载 [asset.downloadUrl] 到 [destination]，过程中校验 sha256。
-     * 失败时删除半成品，避免下次以为已下载。
+     * Download [asset.downloadUrl] to [destination], verifying sha256 along the way.
+     * On failure, deletes the partial file so the next run doesn't think it's already downloaded.
      */
     fun download(asset: Asset, destination: java.nio.file.Path) {
         log.info("downloading {} -> {}", asset.fileName, destination)
         val request = Request.Builder().url(asset.downloadUrl).build()
         try {
             http.newCall(request).execute().use { response ->
-                require(response.isSuccessful) { "下载失败：${response.code} ${response.message}" }
-                val body = response.body ?: error("下载响应体为空")
+                require(response.isSuccessful) { "download failed: ${response.code} ${response.message}" }
+                val body = response.body ?: error("empty download response body")
                 val digest = MessageDigest.getInstance("SHA-256")
                 destination.outputStream().use { out ->
                     body.byteStream().use { input ->
@@ -76,7 +78,7 @@ class AdoptiumClient(
                 }
                 val actual = digest.digest().joinToString("") { "%02x".format(it) }
                 require(actual.equals(asset.checksum, ignoreCase = true)) {
-                    "sha256 校验失败：期望 ${asset.checksum}, 实际 $actual"
+                    "sha256 mismatch: expected ${asset.checksum}, got $actual"
                 }
             }
         } catch (e: Exception) {
@@ -86,24 +88,25 @@ class AdoptiumClient(
     }
 
     /**
-     * 用最朴素的 JSON 路径解析，避免给一个一次性结构写完整 Moshi data class。
-     * Adoptium 响应是一个数组，我们只取首元素的 `binaries[0].package`。
+     * Naive JSON path-style parsing — avoids writing a full Moshi data class
+     * for a one-off shape. Adoptium's response is an array; we just take
+     * `binaries[0].package` of the first element.
      */
     private fun parseAsset(json: String, platform: Platform, major: Int): Asset {
         @Suppress("UNCHECKED_CAST")
         val type = Types.newParameterizedType(List::class.java, Map::class.java)
         val adapter: JsonAdapter<List<Map<String, Any?>>> = moshi.adapter(type)
-        val parsed = adapter.fromJson(json) ?: error("无法解析 Adoptium 响应")
-        require(parsed.isNotEmpty()) { "Adoptium 没有 JDK $major 的 GA 版本（${platform.os.adoptium}/${platform.arch.adoptium}）" }
+        val parsed = adapter.fromJson(json) ?: error("failed to parse Adoptium response")
+        require(parsed.isNotEmpty()) { "Adoptium has no GA build for JDK $major (${platform.os.adoptium}/${platform.arch.adoptium})" }
         val first = parsed[0]
         val binaries = first["binaries"] as? List<*>
-            ?: error("响应缺少 binaries 字段")
-        require(binaries.isNotEmpty()) { "binaries 数组为空" }
+            ?: error("response missing binaries field")
+        require(binaries.isNotEmpty()) { "binaries array is empty" }
         @Suppress("UNCHECKED_CAST")
         val binary = binaries[0] as Map<String, Any?>
         @Suppress("UNCHECKED_CAST")
         val pkg = binary["package"] as? Map<String, Any?>
-            ?: error("binary 缺少 package 字段")
+            ?: error("binary missing package field")
         val versionData = first["version_data"] as? Map<*, *>
         val semver = versionData?.get("semver") as? String ?: "unknown"
         return Asset(
@@ -117,14 +120,14 @@ class AdoptiumClient(
     }
 
     /**
-     * 一份 JDK 二进制的元数据。
+     * Metadata for a JDK binary.
      */
     data class Asset(
         val fileName: String,
         val downloadUrl: String,
         val checksum: String,
         val size: Long,
-        /** 形如 `21.0.11+10.0.LTS`。 */
+        /** Like `21.0.11+10.0.LTS`. */
         val semver: String,
         val major: Int,
     )

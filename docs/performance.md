@@ -1,172 +1,99 @@
 # Performance
 
-All numbers below are measured on a MacBook Pro M3 with Temurin JDK 21. Your absolute numbers will differ; the relative ratios should hold across hardware.
+<script setup>
+import { data } from './.vitepress/theme/benchmarks.data.ts'
+</script>
 
-## Headline
+ktx is benchmarked end-to-end against the official `kotlin` CLI (which dispatches `.main.kts` through the same `kotlin-main-kts` host that ktx wraps) using [`hyperfine`](https://github.com/sharkdp/hyperfine) on the same scripts under identical conditions.
 
-| Scenario | Without daemon | With warm daemon | Speedup |
-| --- | ---: | ---: | ---: |
-| Repeated run, same script | 220 ms | **120 ms** | 1.8× |
-| Edit + re-run (compile cache miss) | 750 ms | **250 ms** | **3.0×** |
-| `--frozen` (CI-style) | 300 ms | **170 ms** | 1.8× |
+Three configurations are compared in every scenario:
 
-```mermaid
-%%{init: {'theme':'default', 'themeVariables': {'fontSize': '14px'}}}%%
-xychart-beta
-    title "Run latency comparison (ms, lower is better)"
-    x-axis ["Repeat", "Dev loop", "--frozen"]
-    y-axis "ms" 0 --> 800
-    bar [220, 750, 300]
-    bar [120, 250, 170]
-```
+- **`ktx-daemon`** — `ktx run --daemon`, the recommended dev workflow. The daemon keeps the embedded Kotlin compiler resident, so subsequent runs only pay the script-compile + class-load cost.
+- **`ktx`** — `ktx run` without the daemon. Cold JVM each invocation, but with ktx's compiled-script cache and AppCDS archive both warm.
+- **`main-kts`** — system `kotlin foo.main.kts`. The straightforward way most people run `.kts` today.
 
-The blue bars are without the daemon; the second series is with a warm daemon. The dev-loop column is where the daemon shines: every keystroke iteration in script development gets 3× faster.
+::: tip Hardware
+All numbers below were measured on Apple M3 (8-core), Temurin JDK 21.0.11, with each tool's caches warmed once before timing.
+Reproduce locally with `mise run bench` (script in [`benchmarks/`](https://github.com/gaojunran/ktx/tree/main/benchmarks)).
+:::
+
+## Comparison vs `main-kts`
+
+<BenchChart
+  :tools="data.tools"
+  :rows="data.rows"
+  :unit="data.unit"
+  :versions="data.versions"
+/>
+
+<small>Last updated: {{ new Date(data.updated).toISOString().slice(0, 10) }} · Source: [`benchmarks/results.json`](https://github.com/gaojunran/ktx/blob/main/benchmarks/results.json)</small>
+
+## What the rows show
+
+### Warm — hello.kts (no deps)
+
+The simplest possible script; the goal is to isolate JVM-startup + script-execution overhead with everything else cached.
+
+- ktx-daemon ≈ **{{ data.rows.find(r => r.key === 'warm-no-deps').values['ktx-daemon'] }} ms** — pure IPC cost, no compiler cold start.
+- ktx (no daemon) ≈ **{{ data.rows.find(r => r.key === 'warm-no-deps').values.ktx }} ms** — JVM start + AppCDS-warm class load + script compile cache hit.
+- `main-kts` ≈ **{{ data.rows.find(r => r.key === 'warm-no-deps').values['main-kts'] }} ms** — JVM start + full scripting host init even with cache hit.
+
+### Warm — script with `@file:DependsOn`
+
+Same protocol but the script imports `jackson-databind`. All three tools have the dependency in their local Maven cache.
+
+The gap holds: ktx-daemon stays at ~170 ms, while `main-kts` still has to walk through scripting-host init even when the compiled-script cache is hot.
+
+### Dev loop — script edited every run
+
+The hardest case: every run sees a fresh script source, so the on-disk compiled-script cache misses every time. This is the real-world experience of editing a script and pressing Enter.
+
+This row is the headline. ktx-daemon stays around **300 ms** because the compiler is already warm in the daemon JVM; ktx without a daemon and `main-kts` both pay the full ~1.4 s embedded-Kotlin-compiler initialization on every invocation.
+
+### Cold start — caches cleared
+
+Adversarial baseline: every cache (`~/.cache/ktx/compiled`, `~/.cache/main.kts.compiled.cache`, ktx daemons) is wiped before each run.
+
+`main-kts` actually wins this row. ktx itself ships clikt + tomlj + okhttp + protobuf + a routing layer for the daemon path, all of which the JVM has to load even when not used. On a cold boot that overhead is real. Daemon mode is irrelevant here because it isn't even running.
+
+The daemon's cold-fork case (~700 ms with AppCDS warm, ~2.1 s on first-ever fork) is paid **once**, not per script — see [Daemon Mode](./guide/daemon) for the lifecycle details.
 
 ## Where the time goes
 
-For a simple script like `samples/hello.main.kts` (no dependencies), a `ktx run --daemon` invocation breaks down roughly as:
+Inside `ktx-daemon` the ~120 ms warm run breaks down roughly:
 
-```mermaid
-pie showData
-    title Warm daemon, ~120 ms total
-    "JVM start + CLI class load" : 80
-    "IPC round trip + arg parse" : 10
-    "Script class load + exec" : 30
-```
+- **CLI front-end JVM start + class load** — ~80 ms (AppCDS-warm).
+- **IPC round trip + arg parsing** — ~10 ms.
+- **Script class load + execution** — ~30 ms.
 
 For a fresh script (compile cache miss):
 
-```mermaid
-pie showData
-    title Warm daemon, new script, ~250 ms total
-    "JVM start + CLI class load" : 80
-    "IPC + arg parse" : 10
-    "Script compilation (warm compiler)" : 130
-    "Script class load + exec" : 30
-```
+- CLI startup — ~80 ms.
+- IPC + arg parsing — ~10 ms.
+- **Script compilation (warm compiler)** — ~130 ms.
+- Script class load + execution — ~30 ms.
 
-For comparison, **without** the daemon, the warm-script-but-cold-compiler path (when the user edited the script and re-runs):
+Compare to `main-kts` on the same warm script: a fresh JVM has to redo the embedded-compiler init (~1.4 s, not visible because most of it overlaps with class loading the JVM was doing anyway), so the steady-state cost stays in the 700–800 ms range no matter how many times you run it.
 
-```mermaid
-pie showData
-    title No daemon, dev loop, ~750 ms total
-    "JVM start + CLI class load" : 150
-    "Embedded compiler init (PSI/FIR/CLs)" : 1400
-    "Script compilation" : 200
-    "Script class load + exec" : 30
-```
+## When ktx is *not* faster
 
-Wait — that adds up to 1780 ms, not 750. The actual dev-loop measurement is 750 ms because **most of the compiler-init time is amortized across the JVM that already cached classes from prior runs**. The 1400 ms is what you'd see on a true first start. The 750 ms is the true incremental cost: still much higher than the daemon's 250 ms.
+The cold-start row above is honest about this: when every cache is empty and the daemon isn't running, ktx loses to `main-kts` because ktx's CLI carries more code. Two takeaways:
 
-## Compile output startup
+- For **one-off scripts in CI on every run**, the lockfile + frozen-mode path narrows the gap drastically. See [Lockfiles](./guide/lockfile).
+- For **frequently-run scripts (dev loop, cron jobs)**, the daemon's amortization wins overwhelmingly.
 
-`ktx compile` produces a fat jar that runs without ktx at all:
-
-| Script | Jar size | `java -jar` startup |
-| --- | ---: | ---: |
-| `hello.main.kts` | 11 MB | 180 ms |
-| `jackson.main.kts` | 13 MB | 220 ms |
-
-```mermaid
-xychart-beta
-    title "ktx compile vs ktx run, jackson.main.kts (ms)"
-    x-axis ["ktx run (cold)", "ktx run (warm)", "ktx compile output"]
-    y-axis "ms" 0 --> 7000
-    bar [6720, 280, 220]
-```
-
-For one-off distribution (CI artifact, internal tool ship), the compile path wins by a wide margin: end users pay ~220 ms, not 6.7 s.
-
-## CLI startup overhead
-
-`ktx --help` measures the cost of just launching the CLI:
-
-| Configuration | Time |
-| --- | ---: |
-| Plain `java -cp ... MainKt` | 220 ms |
-| `java -XX:SharedArchiveFile=ktx.jsa ...` | **140 ms** |
-| `bin/ktx --help` (full launcher script + jsa) | 150 ms |
-
-```mermaid
-xychart-beta
-    title "CLI startup (ms, lower is better)"
-    x-axis ["No archive", "AppCDS", "Full launcher"]
-    y-axis "ms" 0 --> 250
-    bar [220, 140, 150]
-```
-
-AppCDS shaves ~80 ms off every `ktx` invocation. That savings disappears under daemon mode (since you only pay it once, when forking the daemon), but it's free for everyone who hasn't enabled the daemon yet.
-
-## Daemon cold start
-
-| Configuration | Daemon fork → first script done |
-| --- | ---: |
-| First-ever fork (no jsa cached) | ~2.1 s |
-| Re-fork (jsa from previous fork) | ~700 ms |
-
-```mermaid
-xychart-beta
-    title "Daemon fork latency (ms)"
-    x-axis ["First ever", "With cached jsa"]
-    y-axis "ms" 0 --> 2500
-    bar [2100, 700]
-```
-
-After the first cold start, the on-disk `daemon.jsa` (per-JDK, under `~/.cache/ktx/d/<key>/`) makes subsequent forks fast.
-
-## Compile-then-run, end-to-end
-
-If you imagine a script's full lifecycle:
-
-```mermaid
-gantt
-    title Lifecycle of jackson.main.kts (ktx vs jar distribution)
-    dateFormat X
-    axisFormat %s ms
-
-    section ktx run (every machine)
-    First user (cold)              :a1, 0, 6700
-    Subsequent runs (cache hit)    :a2, 0, 280
-
-    section ktx compile + ship jar
-    Author runs ktx compile once   :b1, 0, 6000
-    User 1: java -jar              :b2, 0, 220
-    User 2: java -jar              :b3, 0, 220
-    User 3: java -jar              :b4, 0, 220
-```
-
-The compile path moves the cost from "every user" to "the author, once". That's the model script distribution typically wants.
-
-## Methodology
-
-- All measurements use `time` and report wall-clock seconds.
-- Each scenario was run 3+ times; the table shows the median or representative run.
-- "Warm daemon" means the daemon has handled at least one prior request (so `ScriptRunner` is fully initialized).
-- "Compile cache hit" means `~/.cache/ktx/compiled/<sha>.jar` already exists for the current source + config hash.
-- Hardware: Apple M3 (8-core), Temurin OpenJDK 21.0.11.
-
-## Reproduce
+## Reproducing
 
 ```bash
-# Build
-./gradlew :modules:cli:installDist
+# Build ktx
+mise run build
 export PATH="$PWD/modules/cli/build/install/ktx/bin:$PATH"
 
-# Without daemon
-time ktx run samples/jackson.main.kts             # cold
-time ktx run samples/jackson.main.kts             # warm (cache hit)
+# Install hyperfine if missing
+brew install hyperfine     # or `mise install hyperfine`
 
-# With daemon
-ktx daemon stop --all
-time ktx run --daemon samples/jackson.main.kts    # cold (forks daemon)
-time ktx run --daemon samples/jackson.main.kts    # warm
-
-# Frozen (CI mode)
-ktx lock samples/jackson.main.kts
-time ktx run --frozen samples/jackson.main.kts
-time ktx run --daemon --frozen samples/jackson.main.kts
-
-# Compile output
-time ktx compile samples/jackson.main.kts
-time java -jar samples/jackson.jar
+# Run the same suite documented above
+mise run bench
 ```
+
+The script at [`benchmarks/bench.sh`](https://github.com/gaojunran/ktx/blob/main/benchmarks/bench.sh) drives `hyperfine` over four scenarios and writes [`benchmarks/results.json`](https://github.com/gaojunran/ktx/blob/main/benchmarks/results.json), which the chart on this page reads at build time.

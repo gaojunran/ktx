@@ -29,7 +29,7 @@ export default withMermaid(defineConfig({
       { text: 'Performance', link: '/performance' },
       { text: 'Design', link: '/design/architecture' },
       { text: 'FAQ', link: '/faq' },
-      { text: 'GitHub', link: 'https://github.com/gaojunran/ktx' },
+      { text: 'Releases', link: 'https://github.com/gaojunran/ktx/releases' },
     ],
 
     sidebar: {

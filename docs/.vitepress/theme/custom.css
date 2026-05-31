@@ -1,0 +1,122 @@
+/**
+ * ktx VitePress theme overrides.
+ *
+ * Two layers:
+ *   1. Brand-color tokens — `--ktx-violet`, `--ktx-blue`, `--ktx-orange` are
+ *      Kotlin's signature gradient. We rebind VitePress' `--vp-c-brand-*`
+ *      tokens to the same palette so default UI (links, buttons, navbar
+ *      hover, custom blocks) follows the brand without us having to style
+ *      every component individually.
+ *   2. Component-specific overrides — navbar logo glow, hero glow on the
+ *      default home (in case anyone uses it), code block tweaks, etc.
+ *
+ * The custom HomeLanding component lives in HomeLanding.vue and uses these
+ * tokens via `var(--ktx-violet)` etc.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+:root {
+  /* Kotlin brand palette */
+  --ktx-violet: #7F52FF;
+  --ktx-violet-dim: #6840d4;
+  --ktx-violet-soft: rgba(127, 82, 255, 0.16);
+  --ktx-blue: #5894FF;
+  --ktx-blue-dim: #4078e6;
+  --ktx-orange: #F88909;
+
+  /* Bind VitePress brand tokens to ktx violet */
+  --vp-c-brand-1: var(--ktx-violet);
+  --vp-c-brand-2: var(--ktx-blue);
+  --vp-c-brand-3: var(--ktx-violet-dim);
+  --vp-c-brand-soft: var(--ktx-violet-soft);
+
+  /* Tip blocks: lean blue rather than green so they match the palette */
+  --vp-c-tip-1: var(--ktx-blue);
+  --vp-c-tip-2: var(--ktx-blue-dim);
+  --vp-c-tip-3: var(--ktx-violet-dim);
+  --vp-c-tip-soft: rgba(88, 148, 255, 0.14);
+
+  --vp-font-family-base:
+    "Inter", -apple-system, "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --vp-font-family-mono:
+    "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+
+  /* Default home hero (we mostly use HomeLanding.vue but keep these in case) */
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(
+    120deg,
+    var(--ktx-violet) 0%,
+    var(--ktx-blue) 100%
+  );
+  --vp-home-hero-image-background-image: radial-gradient(
+    circle at 50% 50%,
+    rgba(127, 82, 255, 0.55) 0%,
+    rgba(88, 148, 255, 0.3) 45%,
+    rgba(248, 137, 9, 0) 75%
+  );
+  --vp-home-hero-image-filter: blur(72px);
+
+  /* Brand button: violet→blue gradient for solid CTA */
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-text: #fff;
+  --vp-button-brand-bg: var(--ktx-violet);
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-hover-text: #fff;
+  --vp-button-brand-hover-bg: var(--ktx-violet-dim);
+  --vp-button-brand-active-border: transparent;
+  --vp-button-brand-active-text: #fff;
+  --vp-button-brand-active-bg: var(--ktx-violet-dim);
+}
+
+.dark {
+  /* In dark mode lift the soft tokens slightly so tip/brand backgrounds
+     remain visible against the deeper canvas. */
+  --vp-c-brand-soft: rgba(127, 82, 255, 0.22);
+  --vp-c-tip-soft: rgba(88, 148, 255, 0.18);
+}
+
+/* Navbar logo glow — kept from previous theme */
+.VPNavBarTitle .VPImage.logo,
+.VPNavBarTitle img.logo {
+  filter:
+    drop-shadow(0 0 4px rgba(127, 82, 255, 0.55))
+    drop-shadow(0 0 10px rgba(88, 148, 255, 0.35));
+  transition: filter 200ms ease;
+}
+.VPNavBarTitle:hover .VPImage.logo,
+.VPNavBarTitle:hover img.logo {
+  filter:
+    drop-shadow(0 0 6px rgba(127, 82, 255, 0.85))
+    drop-shadow(0 0 14px rgba(88, 148, 255, 0.55));
+}
+
+/* Default-hero image glow (in case the default home block is used) */
+.VPHero .VPImage,
+.VPHero img.image-src {
+  filter:
+    drop-shadow(0 0 18px rgba(127, 82, 255, 0.45))
+    drop-shadow(0 0 36px rgba(88, 148, 255, 0.25));
+}
+.VPHero .image-container {
+  max-width: 220px;
+  max-height: 220px;
+}
+
+/* The custom HomeLanding owns its own padding; remove VitePress' default
+   home content padding so the gradients reach edge-to-edge inside the
+   component. */
+.VPHome {
+  overflow: clip;
+}
+.VPHome .VPHomeContent {
+  padding: 0;
+}
+
+/* Inline code in body text: a touch more contrast on the violet brand */
+.vp-doc :not(pre) > code {
+  color: var(--ktx-violet);
+}
+.dark .vp-doc :not(pre) > code {
+  color: #b399ff;
+}

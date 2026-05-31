@@ -62,6 +62,11 @@ run = "pnpm build"
 description = "Produce release archives (zip + tar.gz) under modules/cli/build/distributions/"
 run = "./gradlew :modules:cli:distZip :modules:cli:distTar"
 
+[tasks.bench]
+description = "Run hyperfine benchmarks of ktx vs main-kts; refresh benchmarks/results.json"
+depends = ["build"]
+run = "./benchmarks/bench.sh"
+
 [tasks.ci]
 description = "Run everything CI runs: tests, CLI build, docs build"
 depends = ["test", "build", "docs:build"]

@@ -25,17 +25,22 @@ export KTX_DAEMON=1
 
 ## Performance
 
-Compared on `samples/jackson.main.kts` (one transitive: jackson-databind):
+<script setup>
+import { data } from '../.vitepress/theme/benchmarks.data.ts'
+</script>
 
-| Scenario | Without daemon | With warm daemon |
-| --- | ---: | ---: |
-| Compiled-script cache hit | 220 ms | **120 ms** |
-| Compiled-script cache miss (dev loop) | 750 ms | **250 ms** |
-| `--frozen` mode (CI) | 300 ms | **170 ms** |
+Three scenarios from the [full benchmark suite](/performance), filtered to the rows where the daemon makes the biggest difference:
 
-The dev-loop number is the headline: editing a script and re-running it is roughly **3× faster** through the daemon.
+<BenchChart
+  :tools="data.tools"
+  :rows="data.rows.filter(r => ['warm-no-deps', 'warm-with-deps', 'dev-loop'].includes(r.key))"
+  :unit="data.unit"
+  :versions="data.versions"
+/>
 
-See the [Performance page](/performance) for fuller benchmarks and a breakdown of where the time goes.
+The dev-loop row is the headline: editing a script and re-running it is roughly **6× faster** through the daemon than the same operation through the official `kotlin foo.main.kts`.
+
+See the [Performance page](/performance) for the cold-start row (where ktx is intentionally not the fastest — the daemon's value is amortized warm runs, not one-shot CI invocations) and a fuller breakdown.
 
 ## How it works
 

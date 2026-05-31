@@ -4,26 +4,30 @@
 >
 > 这一份记录所有 Phase 2 没做、留给后续的功能与优化。每条都是「想清楚了但还没动手」的状态。
 
-## Phase 3.1：`ktx compile --self-contained`
+## Phase 3.1：`ktx compile --self-contained` ✅ 已完成（2026-05-31）
 
-把 Phase 2.4 的 fat jar 进一步封装成「带最小 JRE 的目录树」，end user 连 JRE 都不用装。
+`ktx compile <script> --self-contained -o <dir>` 已上线：用 `jdeps` 分析 fat jar，`jlink --compress=2 --strip-debug` 出最小 JRE，配合 launcher 脚本组成 `bin/lib/runtime` 三件套目录。end user 拿到目录，零 Java 依赖直接 `bin/<name>` 执行。
 
-**实现路径**：
+实现：`modules/core/.../compile/SelfContainedFlow.kt` + `CompileCommand` 加 `--self-contained` flag。详见 `docs/guide/compile.md`「Self-contained: zero Java required」一节。
 
-1. Phase 2.4 已产出 fat jar（11-13 MB）。
-2. `jdeps --print-module-deps foo.jar` 分析需要的 JDK 模块。
-3. `jlink --add-modules <list> --output runtime/` 出最小 JRE（30-40 MB）。
-4. `jpackage --type app-image --runtime-image runtime --main-jar foo.jar --dest dist/`。
-5. 产物 `dist/foo/` 目录，含 `bin/foo` 启动脚本和 `lib/runtime/`。
-6. 用户 `./foo/bin/foo` 直接跑，零依赖。
+**本期未做、后续可做**：
 
-**关键 trade-off**：
+- jpackage 包成 `.dmg`/`.deb`/`.exe` installer（参见下方）。
+- 跨平台 release matrix（jlink 不能交叉编译，要分别在 macOS / Linux / Windows runner 上跑）。
+- jlink 产物缓存（单次 ~3-5s，目前不值得加缓存维护代价）。
 
-- 总体积 ~50-60 MB（fat jar 13 MB + 最小 JRE ~40 MB）。
-- 跨平台需要在每个目标平台分别 build —— `jlink` 不能交叉。CI 配 macOS/Linux/Windows 三 runner。
-- 如果 Phase 2.4 fat jar 已含 reflect 等动态特性，jlink 必须包含 `java.base` + `java.logging` + `java.naming` + `jdk.unsupported`（kotlin-reflect 用到）。
+## Phase 3.1.5：jpackage installer
 
-**估计工作量**：1 周。主要在 build 脚本 + 跨平台 CI。
+把 Phase 3.1 的 `bin/lib/runtime` 目录树进一步包成各平台原生 installer：
+
+- macOS：`.dmg` 或 `.pkg`，应用进 `/Applications/<name>.app`。需要 Apple Developer ID + codesign + notarize（CI 上 `apple-actions/import-codesign-certs`）。
+- Linux：`.deb` / `.rpm`。`jpackage --type deb` 直接出包。
+- Windows：`.msi` 或 `.exe`，需要 WiX Toolset（CI runner 自带）。
+
+**实现路径**：在 `SelfContainedFlow` 之后增加一个 `InstallerFlow`，调用 `jpackage --type <fmt> --app-image <selfContainedDir> --dest dist/`。
+
+**估计工作量**：1 周（含 macOS 签名调试）。
+
 
 ## Phase 3.2：`ktx compile --native`
 

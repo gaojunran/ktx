@@ -120,13 +120,100 @@ This is what gives `ktx compile` output its 1/6 size advantage.
 - **Active development.** Use `ktx run --daemon` for the dev loop; recompile-to-jar every iteration is overkill.
 - **Scripts that change every run.** `ktx compile` does not run a daemon; it shells out a fresh compiler per invocation.
 
+## Self-contained: zero Java required
+
+`--self-contained` wraps the fat jar in a directory that ships its own minimal JRE. End users do not need Java installed at all — they extract the directory and run `bin/<name>`.
+
+```bash
+$ ktx compile samples/hello.main.kts --self-contained -o ./hello-app
+[INFO] compile /path/to/samples/hello.main.kts
+[INFO] modules: detected=[java.base, java.logging, ...], final=[java.base, ...]
+artifact: ./hello-app/  (~42 MB)
+layout:
+  bin/hello-app    launcher
+  lib/app.jar      compiled script (~11 MB)
+  runtime/         embedded JRE (~31 MB)
+run with: ./hello-app/bin/hello-app [args...]
+
+$ ./hello-app/bin/hello-app foo bar
+hello from main.kts
+args (2):
+  [0] foo
+  [1] bar
+```
+
+Under the hood:
+
+1. Build the fat jar (same as the default path above).
+2. `jdeps --print-module-deps` reads the fat jar and reports the JDK modules it actually uses.
+3. `jlink --add-modules <list> --compress=2 --strip-debug` produces a minimal runtime under `runtime/`.
+4. A small launcher script (`/bin/sh` on macOS / Linux, `.bat` on Windows) chains the bundled `java` to `lib/app.jar`.
+
+A few extra modules — `jdk.unsupported`, `java.naming`, `java.logging` — are unioned in unconditionally because `jdeps` cannot trace classes loaded reflectively, and they are cheap to keep.
+
+### Trade-offs
+
+- **Size**: ~40 MB for a no-deps script, ~60 MB once a database driver or large JSON library lands. About 4× the fat jar but absolutely flat for the end user.
+- **Host platform only**: `jlink` cannot cross-compile. To distribute to macOS, Linux, and Windows, run `ktx compile --self-contained` once per platform.
+- **Build host needs a JDK**: `jdeps` and `jlink` ship with the JDK, not the JRE. ktx will exit with a clear error if either is missing.
+
+### When to use it
+
+- Tools for non-developer audiences who balk at "first install Java".
+- Locked-down hosts where you cannot install or update a system JRE.
+- Reproducible artifacts: the JRE version is pinned to whatever JDK ran `ktx compile`.
+
+## Self-contained: zero Java required
+
+`--self-contained` wraps the fat jar in a directory that ships its own minimal JRE. End users do not need Java installed at all — they extract the directory and run `bin/<name>`.
+
+```bash
+$ ktx compile samples/hello.main.kts --self-contained -o ./hello-app
+[INFO] compile /path/to/samples/hello.main.kts
+[INFO] modules: detected=[java.base, java.logging, ...], final=[java.base, ...]
+artifact: ./hello-app/  (~42 MB)
+layout:
+  bin/hello-app    launcher
+  lib/app.jar      compiled script (~11 MB)
+  runtime/         embedded JRE (~31 MB)
+run with: ./hello-app/bin/hello-app [args...]
+
+$ ./hello-app/bin/hello-app foo bar
+hello from main.kts
+args (2):
+  [0] foo
+  [1] bar
+```
+
+Under the hood:
+
+1. Build the fat jar (same as the default path above).
+2. `jdeps --print-module-deps` reads the fat jar and reports the JDK modules it actually uses.
+3. `jlink --add-modules <list> --compress=2 --strip-debug` produces a minimal runtime under `runtime/`.
+4. A small launcher script (`/bin/sh` on macOS / Linux, `.bat` on Windows) chains the bundled `java` to `lib/app.jar`.
+
+A few extra modules — `jdk.unsupported`, `java.naming`, `java.logging` — are unioned in unconditionally because `jdeps` cannot trace classes loaded reflectively, and they are cheap to keep.
+
+### Trade-offs
+
+- **Size**: ~40 MB for a no-deps script, ~60 MB once a database driver or large JSON library lands. About 4× the fat jar but absolutely flat for the end user.
+- **Host platform only**: `jlink` cannot cross-compile. To distribute to macOS, Linux, and Windows, run `ktx compile --self-contained` once per platform.
+- **Build host needs a JDK**: `jdeps` and `jlink` ship with the JDK, not the JRE. ktx will exit with a clear error if either is missing.
+
+### When to use it
+
+- Tools for non-developer audiences who balk at "first install Java".
+- Locked-down hosts where you cannot install or update a system JRE.
+- Reproducible artifacts: the JRE version is pinned to whatever JDK ran `ktx compile`.
+
 ## Further reduction (planned)
 
 | Technique | Phase | Expected size |
 | --- | --- | --- |
-| Current (Phase 2.4) | shipped | 13 MB |
+| Fat jar (Phase 2.4) | shipped | 13 MB |
+| `--self-contained` (Phase 3.1) | shipped | 40-60 MB total, zero user deps |
 | ProGuard / R8 reflect-only keeps | Phase 3+ | ~10 MB |
-| `jpackage` + jlink runtime image | Phase 3.1 | 50 MB total app, 0 user dependencies |
+| `jpackage` installer (.dmg / .deb / .exe) | Phase 3+ | wraps `--self-contained` |
 | GraalVM native image | Phase 3.2 | ~10 MB native binary, ~10 ms startup |
 
-The `--self-contained` and `--native` flags are tracked in the [Phase 3 TODO](https://github.com/gaojunran/ktx/blob/main/reports/phase-3-todo.md).
+The `--native` flag and `jpackage` installer mode are tracked in the [Phase 3 TODO](https://github.com/gaojunran/ktx/blob/main/reports/phase-3-todo.md).

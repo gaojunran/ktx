@@ -64,47 +64,26 @@ Phase 2.2 的 toolchain 路由按 JDK 主版本分 daemon。Phase 2.3 没做的�
 
 **优先级**：低。绝大多数用户用最新稳定版，跨 Kotlin 版本的脚本是边缘需求。等用户实际反馈再做。
 
-## `ktx daemon logs` 子命令
+## `ktx daemon logs` 子命令 ✅ 已完成（2026-05-31）
 
-让用户不用记 daemon log 路径就能看。
+支持 `--tail N` / `--all` / `--jdk` / `--path`。详见 `modules/cli/.../command/DaemonCommand.kt:DaemonLogsCommand` 与 `docs/guide/daemon.md` 的「Inspecting daemon logs」章节。`--path` 让 `tail -f "$(ktx daemon logs --path)"` 模拟 follow 行为，避免在 ktx 里重新实现 watch service。
 
-**实现**：
+**已知遗留**：`kotlin-main-kts` jar 自带的 `slf4j-simple` binding 在 daemon classpath 上有时会赢过 logback，导致 `~/.cache/ktx/d/<key>/log` 实际为空（slf4j-simple 写到 stderr 然后被 ProcessBuilder.DISCARD 吃掉）。修法是把 main-kts 中 `org/slf4j/impl/` 在 install 阶段排除掉，独立 issue 处理。
 
-```kotlin
-class DaemonLogsCommand : CliktCommand(name = "logs") {
-    private val tail by option("--tail", "-n").int().default(50)
-    private val follow by option("--follow", "-f").flag()
-    private val jdkOption by option("--jdk").int()
+## `ktx cache info / clean / gc` 子命令 ✅ 已完成（2026-05-31）
 
-    override fun run() {
-        val daemonDir = jdkOption?.let { DaemonPaths.daemonDirFor(it) } ?: DaemonPaths.defaultDaemonDir()
-        val logFile = DaemonPaths.logFile(daemonDir)
-        // 用 Tailer 库或自己实现 tail-f
-    }
-}
-```
+- `ktx cache info`：路径、条目数、总大小、最旧/最新条目时间。
+- `ktx cache clean`：清空 `~/.cache/ktx/compiled/`。
+- `ktx cache gc [--max-size 2GB]`：LRU 淘汰直到总大小 ≤ cap。
 
-**估计工作量**：半天。
+实现：`modules/cli/.../command/CacheCommand.kt`，复用 `ScriptRunner.defaultCacheDir()`。`gc` 只看 mtime + 总大小两个维度，不涉及年龄/条目数上限。daemon dir（`~/.cache/ktx/d/`）不归 cache 命令管。
 
-## `ktx cache info / clean / gc` 子命令
+## stdin pump shutdown 优化 ✅ 已验证不复现（2026-05-31）
 
-`~/.cache/ktx/compiled/` 里编译产物 jar 可能堆积。需要：
+原 reports 描述：`--forward-stdin` 开启后 ktx CLI 进程退出延迟 ~300ms，pump 线程卡在 native `System.in.read` 上。
 
-- `ktx cache info`：显示总占用、文件数、最老/最新时间
-- `ktx cache clean`：清空
-- `ktx cache gc`：按 LRU + 总大小上限（默认 2GB）淘汰
+实测：在 macOS Sonoma + JDK 21 上，`--forward-stdin` 即使 stdin 来源不 EOF（被 sleep 5 hold 住），ktx CLI 进程自身寿命仍稳定在 ~115-140ms。问题不复现。猜测是 daemon thread + native read 的行为在某版 JDK 之后已修。如未来其它平台/版本再现，再考虑 `Channels.newChannel(System.in) + close()` 中断方案。
 
-**估计工作量**：半天。
-
-## stdin pump shutdown 优化
-
-Phase 2.3 已知问题：`--forward-stdin` 开启后 ktx 进程退出延迟 ~300ms，因为 stdin pump 阻塞在 native read，JVM shutdown 等它解开。
-
-**解决方向**：用 NIO non-blocking read + selector，主线程退出前主动 cancel pump 的 read。或者干脆用 `Channels.newChannel(System.in)` 走 channel 模式，channel close 能立刻中断 read。
-
-**估计工作量**：1-2 天。
-
-**优先级**：低。绝大多数脚本不用 `--forward-stdin`，开了的也容忍 300ms。
 
 ## 协议版本演化
 

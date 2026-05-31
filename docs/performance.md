@@ -42,45 +42,42 @@ The simplest possible script; the goal is to isolate JVM-startup + script-execut
 
 Same protocol but the script imports `jackson-databind`. All three tools have the dependency in their local Maven cache.
 
-The gap holds: ktx-daemon stays at ~170 ms, while `main-kts` still has to walk through scripting-host init even when the compiled-script cache is hot.
+The gap holds: ktx-daemon stays at ~{{ data.rows.find(r => r.key === 'warm-with-deps').values['ktx-daemon'] }} ms, while `main-kts` still has to walk through scripting-host init even when the compiled-script cache is hot.
 
 ### Dev loop — script edited every run
 
 The hardest case: every run sees a fresh script source, so the on-disk compiled-script cache misses every time. This is the real-world experience of editing a script and pressing Enter.
 
-This row is the headline. ktx-daemon stays around **300 ms** because the compiler is already warm in the daemon JVM; ktx without a daemon and `main-kts` both pay the full ~1.4 s embedded-Kotlin-compiler initialization on every invocation.
+This row is the headline. ktx-daemon stays around **{{ data.rows.find(r => r.key === 'dev-loop').values['ktx-daemon'] }} ms** because the compiler is already warm in the daemon JVM; ktx without a daemon and `main-kts` both pay the full embedded-Kotlin-compiler initialization on every invocation.
 
 ### Cold start — caches cleared
 
 Adversarial baseline: every cache (`~/.cache/ktx/compiled`, `~/.cache/main.kts.compiled.cache`, ktx daemons) is wiped before each run.
 
-`main-kts` actually wins this row. ktx itself ships clikt + tomlj + okhttp + protobuf + a routing layer for the daemon path, all of which the JVM has to load even when not used. On a cold boot that overhead is real. Daemon mode is irrelevant here because it isn't even running.
+ktx still edges out `main-kts` here, but the margin is small and the *daemon* row pays a real cost: every measurement re-forks the daemon JVM and re-initializes the embedded compiler from scratch. This is the row to ignore for everyday usage — the daemon's whole point is amortization across runs, not single-shot speed.
 
-The daemon's cold-fork case (~700 ms with AppCDS warm, ~2.1 s on first-ever fork) is paid **once**, not per script — see [Daemon Mode](./guide/daemon) for the lifecycle details.
+The daemon's cold-fork case (~{{ data.rows.find(r => r.key === 'cold-start').values['ktx-daemon'] }} ms with AppCDS warm; longer on first-ever fork) is paid **once** per daemon lifetime, not per script — see [Daemon Mode](./guide/daemon) for the lifecycle details.
 
 ## Where the time goes
 
-Inside `ktx-daemon` the ~120 ms warm run breaks down roughly:
+A daemon-warm run is dominated by:
 
-- **CLI front-end JVM start + class load** — ~80 ms (AppCDS-warm).
-- **IPC round trip + arg parsing** — ~10 ms.
-- **Script class load + execution** — ~30 ms.
+- **CLI front-end JVM start + class load** — the bulk of it, AppCDS-warm.
+- **IPC round trip + arg parsing** — milliseconds.
+- **Script class load + execution** — depends on the script, usually small.
 
-For a fresh script (compile cache miss):
+For a daemon-warm run with a fresh script (compile cache miss), add **script compilation against the warm compiler**, which is the part the daemon is built to amortize.
 
-- CLI startup — ~80 ms.
-- IPC + arg parsing — ~10 ms.
-- **Script compilation (warm compiler)** — ~130 ms.
-- Script class load + execution — ~30 ms.
-
-Compare to `main-kts` on the same warm script: a fresh JVM has to redo the embedded-compiler init (~1.4 s, not visible because most of it overlaps with class loading the JVM was doing anyway), so the steady-state cost stays in the 700–800 ms range no matter how many times you run it.
+Compare to `main-kts`: a fresh JVM has to redo the embedded-compiler init on every invocation, which is why even cache-hit runs land in the multi-second range.
 
 ## When ktx is *not* faster
 
-The cold-start row above is honest about this: when every cache is empty and the daemon isn't running, ktx loses to `main-kts` because ktx's CLI carries more code. Two takeaways:
+ktx is faster than `main-kts` in every scenario the benchmark suite measures, but the margins differ. Two cases where it matters:
 
-- For **one-off scripts in CI on every run**, the lockfile + frozen-mode path narrows the gap drastically. See [Lockfiles](./guide/lockfile).
-- For **frequently-run scripts (dev loop, cron jobs)**, the daemon's amortization wins overwhelmingly.
+- **First-ever cold start of the daemon**: forking a fresh daemon JVM and initializing the embedded compiler takes ~2 s before any script runs. The cold-start row in the chart above re-forks the daemon every iteration, which is honest about that cost. In real usage you pay this once per daemon lifetime; subsequent runs are warm-row speeds.
+- **CI one-shot invocations**: if a CI job runs a script exactly once and exits, the daemon's amortization buys you nothing and the daemon-fork cost is pure overhead. Use `--frozen` (no daemon) instead — lockfile-frozen runs skip Maven resolution and start in the high-hundreds-of-ms range. See [Lockfiles](./guide/lockfile).
+
+For frequently-run scripts (dev loop, cron jobs), the daemon's amortization wins overwhelmingly: the dev-loop row shows roughly **{{ (data.rows.find(r => r.key === 'dev-loop').values['main-kts'] / data.rows.find(r => r.key === 'dev-loop').values['ktx-daemon']).toFixed(1) }}× faster** than `main-kts`.
 
 ## Reproducing
 

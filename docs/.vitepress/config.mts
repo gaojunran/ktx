@@ -7,6 +7,16 @@ export default withMermaid(defineConfig({
   cleanUrls: true,
   lastUpdated: true,
 
+  // Deployed at https://gaojunran.github.io/ktx/ — base must match the repo
+  // name so all assets resolve correctly. Override with KTX_DOCS_BASE to
+  // serve from a different prefix (e.g. a custom domain at root).
+  base: process.env.KTX_DOCS_BASE ?? '/ktx/',
+
+  // Deployed at https://gaojunran.github.io/ktx/ — base must match the repo
+  // name so all assets resolve correctly. Override with KTX_DOCS_BASE to
+  // serve from a different prefix (e.g. a custom domain at root).
+  base: process.env.KTX_DOCS_BASE ?? '/ktx/',
+
   head: [
     ['link', { rel: 'icon', href: '/favicon.ico' }],
   ],

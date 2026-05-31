@@ -3,6 +3,14 @@ java = "temurin-21"
 gradle = "8.14"
 node = "20"
 pnpm = "10"
+# Kotlin distribution used by the benchmark suite (we drive its `kotlin`
+# launcher to time main-kts head-to-head with ktx). Pinning here means
+# `mise-action` in CI installs it for free; locally `mise install` brings
+# it down to ~/.local/share/mise/installs/kotlin/.
+kotlin = "2.3.21"
+# hyperfine drives the benchmarks. Available via mise's aqua backend so
+# CI does not have to apt-install or curl release debs.
+"aqua:sharkdp/hyperfine" = "1.18.0"
 
 [env]
 # Resolve relative paths from repo root by default; tasks that need otherwise

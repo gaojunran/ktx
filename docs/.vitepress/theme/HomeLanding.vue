@@ -13,7 +13,6 @@ import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 import { withBase } from "vitepress";
 import { data as bench } from "./benchmarks.data.ts";
 
-const logoMark = withBase("/logo-mark.png");
 const guideStarted = withBase("/guide/getting-started");
 const linkPerf = withBase("/performance");
 const linkDaemon = withBase("/guide/daemon");
@@ -115,13 +114,6 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="ktx-stage">
-        <img
-          class="ktx-logo-art"
-          :src="logoMark"
-          alt="ktx logo"
-          width="320"
-          height="320"
-        />
         <div class="ktx-terminal" aria-hidden="true">
           <div class="ktx-terminal-bar">
             <span></span><span></span><span></span>
@@ -130,16 +122,17 @@ onBeforeUnmount(() => {
           <div class="ktx-terminal-body">
             <template v-for="(line, idx) in lines" :key="idx">
               <div v-if="idx < visibleLines" class="ktx-line">
-                <span v-if="line.prompt" class="t-prompt">$&nbsp;</span>
-                <span v-if="line.ok" class="t-ok">✓ </span>
-                <span v-if="line.ms" class="t-ms">⏱ </span>
+                <span v-if="line.prompt" class="t-prefix t-prompt">$</span>
+                <span v-if="line.ok" class="t-prefix t-ok">✓</span>
+                <span v-if="line.ms" class="t-prefix t-ms">⏱</span>
+                <span v-if="line.out" class="t-prefix"></span>
                 <span :class="{ 't-cmd': line.prompt, 't-ok-text': line.ok, 't-out': line.out, 't-ms-text': line.ms }">
                   {{ line.text }}
                 </span>
               </div>
             </template>
             <div v-if="visibleLines >= lines.length" class="ktx-line">
-              <span class="t-prompt">$&nbsp;</span>
+              <span class="t-prefix t-prompt">$</span>
               <span class="ktx-caret">▍</span>
             </div>
           </div>
@@ -392,34 +385,24 @@ onBeforeUnmount(() => {
 
 /* Right column */
 .ktx-stage {
-  align-items: center;
+  align-items: stretch;
   display: flex;
   flex-direction: column;
-  gap: 28px;
   min-width: 0;
   position: relative;
-}
-
-.ktx-logo-art {
-  filter:
-    drop-shadow(0 0 28px rgba(127, 82, 255, 0.45))
-    drop-shadow(0 0 50px rgba(88, 148, 255, 0.28));
-  height: auto;
-  max-width: 280px;
-  width: 100%;
 }
 
 .ktx-terminal {
   background: linear-gradient(180deg, #1f1d28 0%, #16151c 100%);
   border: 1px solid rgba(127, 82, 255, 0.25);
-  border-radius: 12px;
+  border-radius: 14px;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.04) inset,
     0 30px 60px -30px rgba(0, 0, 0, 0.5),
+    0 0 60px rgba(127, 82, 255, 0.15),
     0 0 0 1px rgba(127, 82, 255, 0.1);
   overflow: hidden;
   width: 100%;
-  max-width: 380px;
 }
 .ktx-terminal-bar {
   align-items: center;
@@ -447,16 +430,22 @@ onBeforeUnmount(() => {
 .ktx-terminal-body {
   color: rgba(255, 255, 255, 0.85);
   font-family: var(--vp-font-family-mono, monospace);
-  font-size: 12.5px;
-  line-height: 1.7;
-  min-height: 200px;
-  padding: 14px 18px 18px;
+  font-size: 13px;
+  line-height: 1.75;
+  min-height: 240px;
+  padding: 18px 22px 22px;
 }
 .ktx-line {
   display: flex;
   align-items: baseline;
   white-space: nowrap;
   overflow: hidden;
+}
+.t-prefix {
+  display: inline-block;
+  flex-shrink: 0;
+  text-align: center;
+  width: 1.6em;
 }
 .t-prompt { color: #7F52FF; }
 .t-ok { color: #28c840; }
@@ -549,9 +538,7 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
     min-height: 0;
   }
-  .ktx-stage { order: -1; flex-direction: row; gap: 16px; }
-  .ktx-logo-art { max-width: 140px; }
-  .ktx-terminal { display: none; }
+  .ktx-stage { order: -1; }
   .ktx-proof { grid-template-columns: 1fr; }
 }
 
@@ -562,6 +549,5 @@ onBeforeUnmount(() => {
   .ktx-button, .ktx-install { width: 100%; }
   .ktx-install { box-sizing: border-box; }
   .ktx-stats { gap: 22px; grid-template-columns: 1fr; }
-  .ktx-stage { flex-direction: column; }
 }
 </style>

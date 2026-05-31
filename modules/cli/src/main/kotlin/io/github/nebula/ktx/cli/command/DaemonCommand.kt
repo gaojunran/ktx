@@ -94,12 +94,35 @@ class DaemonStopCommand : CliktCommand(name = "stop") {
     }
 
     private fun stopOne(daemonDir: java.nio.file.Path) {
-        val client = DaemonClient(DaemonPaths.socketFile(daemonDir))
+        val socketPath = DaemonPaths.socketFile(daemonDir)
+        val client = DaemonClient(socketPath)
         try {
             client.shutdown()
-            echo("daemon [${daemonDir.fileName}]: shutdown requested")
+            // The daemon's serve() loop exits, but the socket file removal,
+            // executor shutdowns, and supervisor cleanup happen in finally
+            // blocks afterwards. Wait until the socket file is actually gone
+            // (or 5s elapse) so callers can safely re-start a daemon right
+            // after `daemon stop` returns without racing the cleanup.
+            waitForSocketRemoval(socketPath, timeoutMs = 5_000)
+            echo("daemon [${daemonDir.fileName}]: stopped")
         } catch (e: Exception) {
             echo("daemon [${daemonDir.fileName}]: shutdown failed (already stopped?): ${e.message}")
         }
+    }
+
+    private fun waitForSocketRemoval(socketPath: java.nio.file.Path, timeoutMs: Long) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (!socketPath.toFile().exists()) return
+            try {
+                Thread.sleep(50)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return
+            }
+        }
+        // Fall through silently. The socket may still be there if cleanup
+        // is unusually slow, but ensureRunning has its own retry so we don't
+        // need to fail loudly here.
     }
 }

@@ -87,39 +87,62 @@ class RunCommand : CliktCommand(name = "run") {
 
     private fun runViaDaemon(): Nothing {
         val (jdkMajor, javaBin) = pickToolchain()
-        val client = DaemonLifecycle.ensureRunning(jdkMajor, javaBin)
         val (resolverMode, lockfilePath) = pickResolver()
 
-        val exitCode = if (scriptArg == "-") {
-            // `ktx run -` semantics: read script source from stdin and run inline.
-            // stdin is consumed entirely as source; it cannot also be passed
-            // to the script as data. This has been the behavior since Phase 1.
-            val source = System.`in`.bufferedReader().readText()
-            client.run(
-                scriptPath = null,
-                inlineSource = source,
-                scriptArgs = scriptArgs,
-                virtualName = "<stdin>",
-                resolverMode = io.github.nebula.ktx.proto.v1.ResolverMode.NORMAL,
-            )
-        } else {
-            val path = resolveScript(scriptArg)
-            preflightToolchain(path)
-            // Phase 2.3: forward ktx's own stdin to the daemon as a stream.
-            // Disabled by default: the pump thread keeps a stdin read in
-            // a native syscall during shutdown, adding ~300ms to exit.
-            // Users who need it must opt in via --forward-stdin or
-            // KTX_FORWARD_STDIN=1.
-            client.run(
-                scriptPath = path,
-                inlineSource = null,
-                scriptArgs = scriptArgs,
-                resolverMode = resolverMode,
-                lockfilePath = lockfilePath,
-                stdin = if (forwardStdin) System.`in` else null,
-            )
-        }
+        // Daemon connect can race with a daemon that's just been asked to
+        // shut down: ensureRunning() may see a still-listening socket from
+        // a dying daemon and return a client that fails on first connect.
+        // Retry once: forget the cached client, ensureRunning again (which
+        // will refresh the dead-socket detection), then reconnect. Two
+        // attempts is plenty in practice.
+        val exitCode = runOnDaemon(jdkMajor, javaBin, resolverMode, lockfilePath, attempt = 1)
         exitProcess(exitCode)
+    }
+
+    private fun runOnDaemon(
+        jdkMajor: Int,
+        javaBin: String?,
+        resolverMode: io.github.nebula.ktx.proto.v1.ResolverMode,
+        lockfilePath: Path?,
+        attempt: Int,
+    ): Int {
+        val client = DaemonLifecycle.ensureRunning(jdkMajor, javaBin)
+        return try {
+            if (scriptArg == "-") {
+                val source = System.`in`.bufferedReader().readText()
+                client.run(
+                    scriptPath = null,
+                    inlineSource = source,
+                    scriptArgs = scriptArgs,
+                    virtualName = "<stdin>",
+                    resolverMode = io.github.nebula.ktx.proto.v1.ResolverMode.NORMAL,
+                )
+            } else {
+                val path = resolveScript(scriptArg)
+                preflightToolchain(path)
+                // stdin forwarding is opt-in via --forward-stdin; without it
+                // the daemon's System.in is a closed pipe. Most dev-loop
+                // scripts do not need stdin, and forwarding adds ~300ms to
+                // process exit because of native read() teardown.
+                client.run(
+                    scriptPath = path,
+                    inlineSource = null,
+                    scriptArgs = scriptArgs,
+                    resolverMode = resolverMode,
+                    lockfilePath = lockfilePath,
+                    stdin = if (forwardStdin) System.`in` else null,
+                )
+            }
+        } catch (e: java.io.IOException) {
+            // Likely race against a daemon that was shutting down when we
+            // probed socketAlive. Retry once with a fresh ensureRunning.
+            if (attempt < 2) {
+                log.warn("daemon connect failed (attempt $attempt): ${e.message}; retrying")
+                Thread.sleep(200)
+                return runOnDaemon(jdkMajor, javaBin, resolverMode, lockfilePath, attempt + 1)
+            }
+            throw e
+        }
     }
 
     /**

@@ -49,26 +49,91 @@ jobs:
       - name: Build VitePress site
         run: mise run docs:build
 
-      - name: Upload site artifact for deploy job
-        if: github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v3
+  # Benchmark on every push to main (skipped on PRs / tag pushes to keep
+  # CI snappy and avoid noisy commits on release tags). Result is committed
+  # back to main via stefanzweifel/git-auto-commit-action; the perf page
+  # rebuilds on the next docs deploy.
+  benchmark:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
         with:
-          path: docs/.vitepress/dist
+          fetch-depth: 0
+          # Need a writable token so the auto-commit action can push back.
+          # GITHUB_TOKEN with contents:write is enough for non-protected
+          # branches; if main is protected, switch to a PAT in a secret.
+          persist-credentials: true
+
+      - uses: jdx/mise-action@v2
+        with:
+          experimental: true
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build CLI distribution
+        run: mise run build
+
+      - name: Run benchmarks
+        # Benchmark numbers from a shared GitHub runner are noisier than a
+        # quiet laptop, but they are still useful as a regression signal
+        # and as the canonical published numbers.
+        run: mise run bench
+
+      - name: Commit updated results.json
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "bench: refresh results.json [skip ci]"
+          file_pattern: benchmarks/results.json
+          # The commit message includes [skip ci] so the auto-commit
+          # itself does not retrigger this workflow.
 
   # Only deploys on pushes to main. PRs build the site (above) but never
   # publish, so we can verify the build without exposing in-flight changes.
   deploy-docs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: test
+    needs:
+      - test
+      # benchmark commits a fresh results.json before docs deploy so the
+      # published perf page picks it up. If benchmark is skipped (PRs or
+      # tag pushes — though tags don't reach here anyway) the dependency
+      # uses `if: !cancelled()` semantics via job-level if checks.
+      - benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       pages: write
       id-token: write
+      contents: read
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # benchmark just pushed a new commit on main; re-checkout + rebuild
+      # so the deployed site contains the freshest results.json.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: jdx/mise-action@v2
+        with:
+          experimental: true
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build VitePress site
+        run: mise run docs:build
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/.vitepress/dist
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
@@ -79,6 +144,7 @@ jobs:
   final:
     needs:
       - test
+      - benchmark
       - deploy-docs
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -101,7 +167,8 @@ jobs:
           failed = False
           for name, data in sorted(needs.items()):
               result = data.get("result", "unknown")
-              # `skipped` is fine for deploy-docs on PRs, but not for test.
+              # `skipped` is fine for deploy-docs / benchmark on PRs, but
+              # not for test.
               if result in ("success", "skipped"):
                   print(f"::notice::{name}: {result}")
               else:

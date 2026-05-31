@@ -18,13 +18,21 @@ if [ ! -x "$KTX" ]; then
 fi
 
 # Find a real `kotlin` (avoid ktx's launcher if a user has aliased it).
-# Prefer mise's installed Kotlin distribution; fall back to PATH.
+# Prefer mise's installed Kotlin distribution so we never resolve to the
+# alias even when PATH order is unusual; fall back to `command -v` for
+# environments without mise.
 KOTLIN=""
 for candidate in "$HOME"/.local/share/mise/installs/kotlin/*/kotlinc/bin/kotlin; do
   if [ -x "$candidate" ]; then KOTLIN="$candidate"; break; fi
 done
-if [ -z "$KOTLIN" ] && command -v kotlin >/dev/null 2>&1; then
-  KOTLIN="$(command -v kotlin)"
+if [ -z "$KOTLIN" ]; then
+  # Resolve via PATH but reject anything that looks like a wrapper (script
+  # under modules/cli/ — that's our own launcher).
+  cand="$(command -v kotlin 2>/dev/null || true)"
+  case "$cand" in
+    */modules/cli/*) cand="" ;;
+  esac
+  KOTLIN="$cand"
 fi
 if [ -z "$KOTLIN" ]; then
   echo "kotlin CLI not found. Install via 'mise install kotlin' or your package manager." >&2
@@ -34,6 +42,19 @@ fi
 echo "ktx:     $KTX"
 echo "kotlin:  $KOTLIN"
 echo
+
+# Detect tool versions for the JSON header. Wrapped to survive set -e.
+# ktx has no --version flag yet; use the closest git tag as a stable
+# release id, or 'dev' on untagged commits / shallow clones.
+{
+  KTX_VER="$(cd "$REPO_ROOT" && git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')" || true
+  KOTLIN_VER="$("$KOTLIN" -version 2>&1 | awk '/Kotlin version/ {print $3; exit}')" || true
+  JAVA_VER="$(java -version 2>&1 | awk -F'"' '/version/ {print $2; exit}')" || true
+}
+KTX_VER="${KTX_VER:-dev}"
+KOTLIN_VER="${KOTLIN_VER:-unknown}"
+JAVA_VER="${JAVA_VER:-unknown}"
+export KTX_VER KOTLIN_VER JAVA_VER
 
 # Fixtures
 HELLO="$REPO_ROOT/benchmarks/hello.main.kts"
@@ -87,15 +108,19 @@ hyperfine --warmup 2 --runs 6 --export-json s3.json \
   >/dev/null
 
 echo "=== scenario 4: cold start"
+# Each run wipes both the script-compile cache and the daemon socket so
+# every measurement pays the full warm-up cost: fork JVM, load Kotlin
+# embedded compiler, parse / type-check / codegen the script.
 hyperfine --runs 4 --export-json s4.json \
-  --prepare "rm -rf $HOME/.cache/ktx/compiled $HOME/.cache/main.kts.compiled.cache; $KTX daemon stop --all 2>/dev/null || true; sleep 2" \
+  --prepare "rm -rf $HOME/.cache/ktx/compiled $HOME/.cache/main.kts.compiled.cache; $KTX daemon stop --all 2>/dev/null || true" \
   --command-name "ktx" "$KTX run $HELLO" \
+  --command-name "ktx-daemon" "$KTX run --daemon $HELLO" \
   --command-name "main-kts" "$KOTLIN $HELLO" \
   >/dev/null
 
 # Aggregate JSON. We pull mean (in seconds, hyperfine units) and convert to ms.
 python3 - "$SCRATCH" "$RESULTS" <<'PY'
-import json, sys, datetime, pathlib
+import json, sys, datetime, pathlib, os
 
 scratch = pathlib.Path(sys.argv[1])
 out = pathlib.Path(sys.argv[2])
@@ -114,9 +139,9 @@ results = {
     "unit": "ms",
     "tools": ["ktx-daemon", "ktx", "main-kts"],
     "versions": {
-        "ktx": "0.0.1",
-        "main-kts": "Kotlin 2.3.21",
-        "java": "Temurin 21.0.11",
+        "ktx": os.environ.get("KTX_VER", "unknown"),
+        "main-kts": "Kotlin " + os.environ.get("KOTLIN_VER", "unknown"),
+        "java": os.environ.get("JAVA_VER", "unknown"),
     },
     "rows": [
         {
@@ -150,7 +175,7 @@ results = {
             "key": "cold-start",
             "label": "Cold start — caches cleared",
             "values": {
-                "ktx-daemon": None,
+                "ktx-daemon": s4.get("ktx-daemon"),
                 "ktx": s4.get("ktx"),
                 "main-kts": s4.get("main-kts"),
             },
@@ -158,6 +183,6 @@ results = {
     ],
 }
 
-out.write_text(json.dumps(results, indent=2) + "\n")
+out.write_text(json.dumps(results, indent=2, ensure_ascii=False) + "\n")
 print(f"wrote {out}")
 PY

@@ -19,6 +19,14 @@ permissions: {}
 
 env:
   MISE_EXPERIMENTAL: "true"
+  # Gradle pulls dev.usage-spec:* from GitHub Packages, which requires auth
+  # for any operation including read. Export the runner-provided token under
+  # the variable names settings.gradle.kts looks for.
+  GITHUB_USERNAME: ${{ github.actor }}
+  # Gradle pulls dev.usage-spec:* from GitHub Packages, which requires auth
+  # for any operation including read. Export the runner-provided token under
+  # the variable names settings.gradle.kts looks for.
+  GITHUB_USERNAME: ${{ github.actor }}
 
 jobs:
   test:
@@ -26,6 +34,12 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      packages: read
+    env:
+      # GITHUB_TOKEN is automatically scoped to the workflow; re-export it
+      # under the Gradle-friendly name. Has packages:read above, enough to
+      # GET artifacts from GitHub Packages without writing.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,6 +74,9 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+      packages: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -105,6 +122,8 @@ jobs:
     permissions:
       contents: write
       packages: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -118,11 +137,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Render CLI docs
-        env:
-          GITHUB_USERNAME: ${{ github.actor }}
-          # GITHUB_TOKEN is auto-injected by Actions but we re-export it
-          # under the name our settings.gradle.kts looks for.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: mise run render
 
       - name: Commit refreshed CLI docs
@@ -151,6 +165,9 @@ jobs:
       pages: write
       id-token: write
       contents: read
+      packages: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

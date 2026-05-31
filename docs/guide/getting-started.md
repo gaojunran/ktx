@@ -137,7 +137,7 @@ The first invocation forks a background daemon; subsequent runs reuse it and sta
 
 ## What next
 
-- **[CLI reference](./cli)** — every subcommand and flag.
+- **[CLI reference](/cli/)** — every subcommand and flag.
 - **[Lockfiles](./lockfile)** — make scripts reproducible across machines.
 - **[Compiling scripts](./compile)** — produce a 13 MB fat jar that runs on plain JRE.
 - **[Performance](/performance)** — benchmarks and where the time goes.

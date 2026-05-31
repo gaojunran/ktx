@@ -1,0 +1,651 @@
+{
+  "name": "ktx",
+  "bin": "ktx",
+  "cmd": {
+    "full_cmd": [],
+    "usage": "<SUBCOMMAND>",
+    "subcommands": {
+      "run": {
+        "full_cmd": [
+          "run"
+        ],
+        "usage": "run [FLAGS] <SCRIPT> [ARGS]…",
+        "subcommands": {},
+        "args": [
+          {
+            "name": "SCRIPT",
+            "usage": "<SCRIPT>",
+            "required": true,
+            "double_dash": "Optional",
+            "hide": false
+          },
+          {
+            "name": "ARGS",
+            "usage": "[ARGS]…",
+            "required": false,
+            "double_dash": "Optional",
+            "var": true,
+            "hide": false
+          }
+        ],
+        "flags": [
+          {
+            "name": "frozen",
+            "usage": "--frozen",
+            "help": "Resolve only from lockfile; no network",
+            "help_first_line": "Resolve only from lockfile; no network",
+            "short": [],
+            "long": [
+              "frozen"
+            ],
+            "hide": false,
+            "global": false
+          },
+          {
+            "name": "lock",
+            "usage": "--lock",
+            "help": "Run online and refresh the lockfile",
+            "help_first_line": "Run online and refresh the lockfile",
+            "short": [],
+            "long": [
+              "lock"
+            ],
+            "hide": false,
+            "global": false
+          },
+          {
+            "name": "daemon",
+            "usage": "--daemon",
+            "help": "Run via ktx daemon (eliminates compiler cold start). Also enabled by KTX_DAEMON=1.",
+            "help_first_line": "Run via ktx daemon (eliminates compiler cold start). Also enabled by KTX_DAEMON=1.",
+            "short": [],
+            "long": [
+              "daemon"
+            ],
+            "hide": false,
+            "global": false
+          },
+          {
+            "name": "forward-stdin",
+            "usage": "--forward-stdin",
+            "help": "Stream ktx's own stdin to the script in the daemon (off by default; enabling this delays process shutdown by ~300ms while waiting for stdin reads to unblock).",
+            "help_first_line": "Stream ktx's own stdin to the script in the daemon (off by default; enabling this delays process shutdown by ~300ms while waiting for stdin reads to unblock).",
+            "short": [],
+            "long": [
+              "forward-stdin"
+            ],
+            "hide": false,
+            "global": false
+          }
+        ],
+        "mounts": [],
+        "hide": false,
+        "name": "run",
+        "aliases": [],
+        "hidden_aliases": [],
+        "examples": []
+      },
+      "eval": {
+        "full_cmd": [
+          "eval"
+        ],
+        "usage": "eval <-e --expr <EXPR>> [ARGS]…",
+        "subcommands": {},
+        "args": [
+          {
+            "name": "ARGS",
+            "usage": "[ARGS]…",
+            "required": false,
+            "double_dash": "Optional",
+            "var": true,
+            "hide": false
+          }
+        ],
+        "flags": [
+          {
+            "name": "expr",
+            "usage": "-e --expr <EXPR>",
+            "help": "Kotlin expression or statement to execute",
+            "help_first_line": "Kotlin expression or statement to execute",
+            "short": [
+              "e"
+            ],
+            "long": [
+              "expr"
+            ],
+            "required": true,
+            "hide": false,
+            "global": false,
+            "arg": {
+              "name": "EXPR",
+              "usage": "<EXPR>",
+              "required": true,
+              "double_dash": "Optional",
+              "hide": false
+            }
+          }
+        ],
+        "mounts": [],
+        "hide": false,
+        "name": "eval",
+        "aliases": [],
+        "hidden_aliases": [],
+        "examples": []
+      },
+      "lock": {
+        "full_cmd": [
+          "lock"
+        ],
+        "usage": "lock <SCRIPT>",
+        "subcommands": {},
+        "args": [
+          {
+            "name": "SCRIPT",
+            "usage": "<SCRIPT>",
+            "required": true,
+            "double_dash": "Optional",
+            "hide": false
+          }
+        ],
+        "flags": [],
+        "mounts": [],
+        "hide": false,
+        "name": "lock",
+        "aliases": [],
+        "hidden_aliases": [],
+        "examples": []
+      },
+      "add": {
+        "full_cmd": [
+          "add"
+        ],
+        "usage": "add [--no-lock] <COORDINATES> <SCRIPT>",
+        "subcommands": {},
+        "args": [
+          {
+            "name": "COORDINATES",
+            "usage": "<COORDINATES>",
+            "required": true,
+            "double_dash": "Optional",
+            "hide": false
+          },
+          {
+            "name": "SCRIPT",
+            "usage": "<SCRIPT>",
+            "required": true,
+            "double_dash": "Optional",
+            "hide": false
+          }
+        ],
+        "flags": [
+          {
+            "name": "no-lock",
+            "usage": "--no-lock",
+            "help": "Edit the script only; skip lockfile refresh",
+            "help_first_line": "Edit the script only; skip lockfile refresh",
+            "short": [],
+            "long": [
+              "no-lock"
+            ],
+            "hide": false,
+            "global": false
+          }
+        ],
+        "mounts": [],
+        "hide": false,
+        "name": "add",
+        "aliases": [],
+        "hidden_aliases": [],
+        "examples": []
+      },
+      "compile": {
+        "full_cmd": [
+          "compile"
+        ],
+        "usage": "compile [-o --output <OUTPUT>] [--self-contained] <SCRIPT>",
+        "subcommands": {},
+        "args": [
+          {
+            "name": "SCRIPT",
+            "usage": "<SCRIPT>",
+            "required": true,
+            "double_dash": "Optional",
+            "hide": false
+          }
+        ],
+        "flags": [
+          {
+            "name": "output",
+            "usage": "-o --output <OUTPUT>",
+            "help": "Output path. With --self-contained this is a directory; otherwise a jar file (defaults to <script>.jar next to the script).",
+            "help_first_line": "Output path. With --self-contained this is a directory; otherwise a jar file (defaults to <script>.jar next to the script).",
+            "short": [
+              "o"
+            ],
+            "long": [
+              "output"
+            ],
+            "hide": false,
+            "global": false,
+            "arg": {
+              "name": "OUTPUT",
+              "usage": "<OUTPUT>",
+              "required": true,
+              "double_dash": "Optional",
+              "hide": false
+            }
+          },
+          {
+            "name": "self-contained",
+            "usage": "--self-contained",
+            "help": "Bundle a minimal JRE alongside the fat jar so end users do not need Java installed. Output is a directory tree (host platform only).",
+            "help_first_line": "Bundle a minimal JRE alongside the fat jar so end users do not need Java installed. Output is a directory tree (host platform only).",
+            "short": [],
+            "long": [
+              "self-contained"
+            ],
+            "hide": false,
+            "global": false
+          }
+        ],
+        "mounts": [],
+        "hide": false,
+        "name": "compile",
+        "aliases": [],
+        "hidden_aliases": [],
+        "examples": []
+      },
+      "toolchain": {
+        "full_cmd": [
+          "toolchain"
+        ],
+        "usage": "toolchain <SUBCOMMAND>",
+        "subcommands": {
+          "list": {
+            "full_cmd": [
+              "toolchain",
+              "list"
+            ],
+            "usage": "toolchain list",
+            "subcommands": {},
+            "args": [],
+            "flags": [],
+            "mounts": [],
+            "hide": false,
+            "name": "list",
+            "aliases": [],
+            "hidden_aliases": [],
+            "examples": []
+          },
+          "install": {
+            "full_cmd": [
+              "toolchain",
+              "install"
+            ],
+            "usage": "toolchain install <MAJOR>",
+            "subcommands": {},
+            "args": [
+              {
+                "name": "MAJOR",
+                "usage": "<MAJOR>",
+                "required": true,
+                "double_dash": "Optional",
+                "hide": false
+              }
+            ],
+            "flags": [],
+            "mounts": [],
+            "hide": false,
+            "name": "install",
+            "aliases": [],
+            "hidden_aliases": [],
+            "examples": []
+          },
+          "path": {
+            "full_cmd": [
+              "toolchain",
+              "path"
+            ],
+            "usage": "toolchain path <MAJOR>",
+            "subcommands": {},
+            "args": [
+              {
+                "name": "MAJOR",
+                "usage": "<MAJOR>",
+                "required": true,
+                "double_dash": "Optional",
+                "hide": false
+              }
+            ],
+            "flags": [],
+            "mounts": [],
+            "hide": false,
+            "name": "path",
+            "aliases": [],
+            "hidden_aliases": [],
+            "examples": []
+          }
+        },
+        "args": [],
+        "flags": [],
+        "mounts": [],
+        "hide": false,
+        "name": "toolchain",
+        "aliases": [],
+        "hidden_aliases": [],
+        "examples": []
+      },
+      "daemon": {
+        "full_cmd": [
+          "daemon"
+        ],
+        "usage": "daemon <SUBCOMMAND>",
+        "subcommands": {
+          "status": {
+            "full_cmd": [
+              "daemon",
+              "status"
+            ],
+            "usage": "daemon status [--all] [--jdk <JDK>]",
+            "subcommands": {},
+            "args": [],
+            "flags": [
+              {
+                "name": "all",
+                "usage": "--all",
+                "help": "List every daemon",
+                "help_first_line": "List every daemon",
+                "short": [],
+                "long": [
+                  "all"
+                ],
+                "hide": false,
+                "global": false
+              },
+              {
+                "name": "jdk",
+                "usage": "--jdk <JDK>",
+                "help": "Target JDK major version (default: current)",
+                "help_first_line": "Target JDK major version (default: current)",
+                "short": [],
+                "long": [
+                  "jdk"
+                ],
+                "hide": false,
+                "global": false,
+                "arg": {
+                  "name": "JDK",
+                  "usage": "<JDK>",
+                  "required": true,
+                  "double_dash": "Optional",
+                  "hide": false
+                }
+              }
+            ],
+            "mounts": [],
+            "hide": false,
+            "name": "status",
+            "aliases": [],
+            "hidden_aliases": [],
+            "examples": []
+          },
+          "stop": {
+            "full_cmd": [
+              "daemon",
+              "stop"
+            ],
+            "usage": "daemon stop [--all] [--jdk <JDK>]",
+            "subcommands": {},
+            "args": [],
+            "flags": [
+              {
+                "name": "all",
+                "usage": "--all",
+                "help": "Stop every daemon",
+                "help_first_line": "Stop every daemon",
+                "short": [],
+                "long": [
+                  "all"
+                ],
+                "hide": false,
+                "global": false
+              },
+              {
+                "name": "jdk",
+                "usage": "--jdk <JDK>",
+                "help": "Target JDK major version (default: current)",
+                "help_first_line": "Target JDK major version (default: current)",
+                "short": [],
+                "long": [
+                  "jdk"
+                ],
+                "hide": false,
+                "global": false,
+                "arg": {
+                  "name": "JDK",
+                  "usage": "<JDK>",
+                  "required": true,
+                  "double_dash": "Optional",
+                  "hide": false
+                }
+              }
+            ],
+            "mounts": [],
+            "hide": false,
+            "name": "stop",
+            "aliases": [],
+            "hidden_aliases": [],
+            "examples": []
+          },
+          "logs": {
+            "full_cmd": [
+              "daemon",
+              "logs"
+            ],
+            "usage": "daemon logs [FLAGS]",
+            "subcommands": {},
+            "args": [],
+            "flags": [
+              {
+                "name": "all",
+                "usage": "--all",
+                "help": "Dump every daemon's log",
+                "help_first_line": "Dump every daemon's log",
+                "short": [],
+                "long": [
+                  "all"
+                ],
+                "hide": false,
+                "global": false
+              },
+              {
+                "name": "jdk",
+                "usage": "--jdk <JDK>",
+                "help": "Target JDK major version (default: current)",
+                "help_first_line": "Target JDK major version (default: current)",
+                "short": [],
+                "long": [
+                  "jdk"
+                ],
+                "hide": false,
+                "global": false,
+                "arg": {
+                  "name": "JDK",
+                  "usage": "<JDK>",
+                  "required": true,
+                  "double_dash": "Optional",
+                  "hide": false
+                }
+              },
+              {
+                "name": "tail",
+                "usage": "-n --tail <TAIL>",
+                "help": "Number of trailing lines to print (default 100). Use 0 for the full log.",
+                "help_first_line": "Number of trailing lines to print (default 100). Use 0 for the full log.",
+                "short": [
+                  "n"
+                ],
+                "long": [
+                  "tail"
+                ],
+                "hide": false,
+                "global": false,
+                "arg": {
+                  "name": "TAIL",
+                  "usage": "<TAIL>",
+                  "required": true,
+                  "double_dash": "Optional",
+                  "hide": false
+                },
+                "default": [
+                  "100"
+                ]
+              },
+              {
+                "name": "path",
+                "usage": "--path",
+                "help": "Print just the log file path; do not dump contents.",
+                "help_first_line": "Print just the log file path; do not dump contents.",
+                "short": [],
+                "long": [
+                  "path"
+                ],
+                "hide": false,
+                "global": false
+              }
+            ],
+            "mounts": [],
+            "hide": false,
+            "name": "logs",
+            "aliases": [],
+            "hidden_aliases": [],
+            "examples": []
+          }
+        },
+        "args": [],
+        "flags": [],
+        "mounts": [],
+        "hide": false,
+        "name": "daemon",
+        "aliases": [],
+        "hidden_aliases": [],
+        "examples": []
+      },
+      "cache": {
+        "full_cmd": [
+          "cache"
+        ],
+        "usage": "cache <SUBCOMMAND>",
+        "subcommands": {
+          "info": {
+            "full_cmd": [
+              "cache",
+              "info"
+            ],
+            "usage": "cache info",
+            "subcommands": {},
+            "args": [],
+            "flags": [],
+            "mounts": [],
+            "hide": false,
+            "name": "info",
+            "aliases": [],
+            "hidden_aliases": [],
+            "examples": []
+          },
+          "clean": {
+            "full_cmd": [
+              "cache",
+              "clean"
+            ],
+            "usage": "cache clean",
+            "subcommands": {},
+            "args": [],
+            "flags": [],
+            "mounts": [],
+            "hide": false,
+            "name": "clean",
+            "aliases": [],
+            "hidden_aliases": [],
+            "examples": []
+          },
+          "gc": {
+            "full_cmd": [
+              "cache",
+              "gc"
+            ],
+            "usage": "cache gc [--max-size <MAX_SIZE>]",
+            "subcommands": {},
+            "args": [],
+            "flags": [
+              {
+                "name": "max-size",
+                "usage": "--max-size <MAX_SIZE>",
+                "help": "Cap on total cache size, e.g. 2GB / 500MB / 100KB. Default 2GB.",
+                "help_first_line": "Cap on total cache size, e.g. 2GB / 500MB / 100KB. Default 2GB.",
+                "short": [],
+                "long": [
+                  "max-size"
+                ],
+                "hide": false,
+                "global": false,
+                "arg": {
+                  "name": "MAX_SIZE",
+                  "usage": "<MAX_SIZE>",
+                  "required": true,
+                  "double_dash": "Optional",
+                  "hide": false
+                },
+                "default": [
+                  "2GB"
+                ]
+              }
+            ],
+            "mounts": [],
+            "hide": false,
+            "name": "gc",
+            "aliases": [],
+            "hidden_aliases": [],
+            "examples": []
+          }
+        },
+        "args": [],
+        "flags": [],
+        "mounts": [],
+        "hide": false,
+        "name": "cache",
+        "aliases": [],
+        "hidden_aliases": [],
+        "examples": []
+      },
+      "usage": {
+        "full_cmd": [
+          "usage"
+        ],
+        "usage": "usage",
+        "subcommands": {},
+        "args": [],
+        "flags": [],
+        "mounts": [],
+        "hide": false,
+        "name": "usage",
+        "aliases": [],
+        "hidden_aliases": [],
+        "examples": []
+      }
+    },
+    "args": [],
+    "flags": [],
+    "mounts": [],
+    "hide": false,
+    "name": "ktx",
+    "aliases": [],
+    "hidden_aliases": [],
+    "examples": []
+  },
+  "config": {
+    "props": {}
+  },
+  "usage": "",
+  "complete": {}
+}

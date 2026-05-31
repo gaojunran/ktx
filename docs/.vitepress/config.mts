@@ -1,5 +1,55 @@
 import { defineConfig } from 'vitepress'
 import { withMermaid } from 'vitepress-plugin-mermaid'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+/**
+ * Build the `/cli/` sidebar from `docs/cli/commands.json`, the JSON spec
+ * `mise run render` writes alongside the markdown.
+ *
+ * Schema (relevant slice):
+ *   { name: "ktx", cmd: { subcommands: { run: { subcommands: { ... } }, ... } } }
+ *
+ * Returns nested sidebar items: each top-level command, with its own
+ * subcommands as `items`. Falls back to an empty array when the file
+ * doesn't exist yet (first clone before any render run); docs:build then
+ * still succeeds and shows an empty CLI section.
+ */
+function buildCliSidebar() {
+  const jsonPath = path.resolve(__dirname, '../cli/commands.json')
+  if (!fs.existsSync(jsonPath)) return []
+  const spec = JSON.parse(fs.readFileSync(jsonPath, 'utf8'))
+  const rootName: string = spec.name ?? 'ktx'
+  const subs: Record<string, any> = spec.cmd?.subcommands ?? {}
+  const topLevel = Object.entries(subs).map(([name, cmd]: [string, any]) => {
+    const childSubs: Record<string, any> = cmd.subcommands ?? {}
+    const children = Object.keys(childSubs).map(child => ({
+      text: `${rootName} ${name} ${child}`,
+      link: `/cli/${name}/${child}`,
+    }))
+    if (children.length > 0) {
+      return {
+        text: `${rootName} ${name}`,
+        link: `/cli/${name}`,
+        collapsed: true,
+        items: children,
+      }
+    }
+    return { text: `${rootName} ${name}`, link: `/cli/${name}` }
+  })
+  return [
+    {
+      text: 'CLI Reference',
+      items: [
+        { text: 'Overview', link: '/cli/' },
+        ...topLevel,
+      ],
+    },
+  ]
+}
 
 export default withMermaid(defineConfig({
   title: 'ktx',
@@ -26,6 +76,7 @@ export default withMermaid(defineConfig({
 
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },
+      { text: 'CLI', link: '/cli/' },
       { text: 'Performance', link: '/performance' },
       { text: 'Design', link: '/design/architecture' },
       { text: 'FAQ', link: '/faq' },
@@ -38,7 +89,6 @@ export default withMermaid(defineConfig({
           text: 'Guide',
           items: [
             { text: 'Getting Started', link: '/guide/getting-started' },
-            { text: 'CLI Reference', link: '/guide/cli' },
             { text: 'Daemon Mode', link: '/guide/daemon' },
             { text: 'Lockfiles', link: '/guide/lockfile' },
             { text: 'Toolchain Management', link: '/guide/toolchain' },
@@ -46,6 +96,7 @@ export default withMermaid(defineConfig({
           ],
         },
       ],
+      '/cli/': buildCliSidebar(),
       '/design/': [
         {
           text: 'Design',

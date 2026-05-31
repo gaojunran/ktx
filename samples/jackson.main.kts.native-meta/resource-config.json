@@ -1,0 +1,33 @@
+{
+  "resources":{
+  "includes":[{
+    "pattern":"\\QMETA-INF/kotlin/script/Jackson_main.kotlin_script\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/java.lang.System$LoggerFinder\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/java.time.zone.ZoneRulesProvider\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/kotlin.reflect.jvm.internal.impl.builtins.BuiltInsLoader\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/kotlin.reflect.jvm.internal.impl.resolve.ExternalOverridabilityCondition\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/kotlin.reflect.jvm.internal.impl.util.ModuleVisibilityHelper\\E"
+  }, {
+    "pattern":"\\Qkotlin/annotation/annotation.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/collections/collections.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/coroutines/coroutines.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/internal/internal.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/kotlin.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/ranges/ranges.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/reflect/reflect.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qktx/script-main.txt\\E"
+  }]},
+  "bundles":[]
+}

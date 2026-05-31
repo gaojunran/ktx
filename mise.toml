@@ -14,6 +14,7 @@ kotlin = "2.3.21"
 # usage CLI consumes the KDL spec produced by `ktx usage` and renders it
 # to markdown / shell completions / man-pages. Used by `mise run render`.
 usage = "latest"
+graalvm = "latest"
 
 [env]
 # Resolve relative paths from repo root by default; tasks that need otherwise
@@ -48,6 +49,24 @@ run = "./modules/cli/build/install/ktx/bin/ktx daemon stop --all || true"
 [tasks."daemon:status"]
 description = "Show status of all ktx daemons"
 run = "./modules/cli/build/install/ktx/bin/ktx daemon status --all"
+
+[tasks."native:hello"]
+description = "Compile samples/hello.main.kts into a single native binary (samples/hello). Requires GraalVM via mise (e.g. `mise install java@oracle-graalvm-21.0.7`); the task locates native-image via $GRAALVM_HOME / $JAVA_HOME / $PATH."
+depends = ["build"]
+run = """
+rm -f samples/hello samples/hello.exe
+./modules/cli/build/install/ktx/bin/ktx compile --native --collect-metadata samples/hello.main.kts
+./samples/hello arg1 arg2
+"""
+
+[tasks."native:jackson"]
+description = "Compile samples/jackson.main.kts into a single native binary (samples/jackson). Same GraalVM prerequisites as native:hello; demonstrates GRMR-bundled jackson metadata picking up automatically."
+depends = ["build"]
+run = """
+rm -f samples/jackson samples/jackson.exe
+./modules/cli/build/install/ktx/bin/ktx compile --native --collect-metadata samples/jackson.main.kts
+./samples/jackson
+"""
 
 [tasks.clean]
 description = "Clean Gradle build outputs and ktx runtime caches"

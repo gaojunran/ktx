@@ -15,6 +15,24 @@ import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.script.experimental.jvm.util.KotlinJars
 
 /**
+ * Per-compilation byproducts that downstream flows ([SelfContainedFlow], [NativeImageFlow])
+ * can consume without re-running the resolver.
+ *
+ * - [fatJar] is the produced output jar (same path as the caller's `outputJar`).
+ * - [resolvedCoords] are the top-level Maven coordinates the script's `@file:DependsOn`
+ *   asked for, in the form `g:a:v`. NativeImageFlow uses these to look up bundled
+ *   GraalVM Reachability Metadata Repository (GRMR) entries.
+ * - [mainClass] is the auto-generated `Main-Class` attribute baked into the fat jar
+ *   (e.g. `Hello_main`). Native-image can't read it from the manifest because we
+ *   pass the jar via `-jar`, so callers may need it explicitly.
+ */
+data class CompileMetadata(
+    val fatJar: Path,
+    val resolvedCoords: List<String>,
+    val mainClass: String,
+)
+
+/**
  * Compile a .kts script into a self-contained fat jar that depends on neither
  * ktx nor the Kotlin compiler.
  *
@@ -42,7 +60,21 @@ class CompileFlow {
 
     private val log = LoggerFactory.getLogger("ktx.compile")
 
-    fun compile(scriptPath: Path, outputJar: Path): ResultWithDiagnostics<*> {
+    /**
+     * Convenience overload for callers that only need the diagnostics result
+     * (the original public API; CLI's `runFatJar` flow goes through here).
+     */
+    fun compile(scriptPath: Path, outputJar: Path): ResultWithDiagnostics<*> =
+        compileWithMetadata(scriptPath, outputJar).first
+
+    /**
+     * Same as [compile], but additionally returns the [CompileMetadata] needed by
+     * native-image / GRMR matching. The metadata is null if compilation failed.
+     */
+    fun compileWithMetadata(
+        scriptPath: Path,
+        outputJar: Path,
+    ): Pair<ResultWithDiagnostics<*>, CompileMetadata?> {
         val absScriptPath = scriptPath.absolute().normalize()
         val tmpCacheDir = Files.createTempDirectory("ktx-compile-cache-")
 
@@ -76,7 +108,7 @@ class CompileFlow {
             else System.clearProperty(MAIN_KTS_CACHE_DIR_PROPERTY)
 
             if (compileResult is ResultWithDiagnostics.Failure) {
-                return compileResult
+                return compileResult to null
             }
 
             // Locate the freshly produced jar in tmpCacheDir. There may be 0 or 1:
@@ -117,7 +149,12 @@ class CompileFlow {
             outputJar.parent?.createDirectories()
             JarPacker(mainClass).pack(inputs, outputJar)
 
-            return ResultWithDiagnostics.Success(Unit, compileResult.reports)
+            val metadata = CompileMetadata(
+                fatJar = outputJar,
+                resolvedCoords = recording.snapshot().keys.toList(),
+                mainClass = mainClass,
+            )
+            return ResultWithDiagnostics.Success(Unit, compileResult.reports) to metadata
         } finally {
             tmpCacheDir.toFile().deleteRecursively()
         }

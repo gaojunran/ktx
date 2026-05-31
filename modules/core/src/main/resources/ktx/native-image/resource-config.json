@@ -1,0 +1,25 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "pattern": "\\QMETA-INF/services/\\E.*"
+      },
+      {
+        "pattern": "\\QMETA-INF/kotlin/script/\\E.*\\Q.kotlin_script\\E"
+      },
+      {
+        "pattern": "\\Qktx/script-main.txt\\E"
+      },
+      {
+        "pattern": ".*\\.kotlin_module"
+      },
+      {
+        "pattern": ".*\\.kotlin_builtins"
+      },
+      {
+        "pattern": ".*\\.kotlin_metadata"
+      }
+    ]
+  },
+  "bundles": []
+}

@@ -29,19 +29,19 @@
 **估计工作量**：1 周（含 macOS 签名调试）。
 
 
-## Phase 3.2：`ktx compile --native`
+## Phase 3.2：`ktx compile --native` ✅ 已完成（2026-05-31）
 
-GraalVM native image。产物 ~10-15 MB 单文件，启动 ~10ms。
+`ktx compile <script> --native [--collect-metadata]` 已上线：用 GraalVM `native-image` 把 fat jar 转成单文件原生二进制。`hello.main.kts` 编出 38 MB 二进制启动 ~22 ms；`jackson.main.kts` 41 MB 启动 ~15 ms。
 
-**挑战**：
+实现：`modules/core/.../compile/NativeImageFlow.kt` + `bootstrap/NativeBootstrap.kt`（绕过 `JvmScriptingHostConfigurationKt.<clinit>` NPE 的 main shim）+ 三层 metadata（ktx 内置 / GRMR jackson 子集 / `<script>.native-meta/` agent trace）。`CompileCommand` 三路分发：fat jar / self-contained / native。详见 `reports/phase-3.2.md` + `docs/guide/compile.md` 的「Native binary」章节。
 
-- `kotlin-reflect` 需要大量配置才能在 native image 跑通（reachability metadata）。GraalVM 社区有 Kotlin reflection 的 partial 支持，但 main-kts 编译产物用反射的方式比较深，可能需要手写 `reflect-config.json` / `resource-config.json`。
-- 脚本里 `@file:DependsOn` 的依赖如果用 reflection（如 jackson-databind 反射映射 POJO），同样需要配置。
-- `--initialize-at-build-time` vs `--initialize-at-run-time` 的取舍——错了会编译失败或运行时 NPE。
+**本期未做、后续可做**：
 
-**估计工作量**：2-3 周。坑深，需要逐个依赖调试。
-
-**先决条件**：建议在 Phase 3.1 上线 + 收用户反馈后再做。
+- **跨平台 CI matrix**：当前只在 macOS arm64 实测；要分发就要 macOS x64 / Linux x64 / Linux arm64 / Windows x64 各 build 一份。预计 1 周。
+- **GraalVM 工具链托管**（`ktx toolchain install graalvm`）：本期仅检测 PATH，要求用户自己 `mise use` 装好。复用 `modules/toolchain` 框架，预计 3 天。
+- **更全的 GRMR 子集**：本期只内置 jackson 三件套。okhttp / netty / slf4j 等可按用户反馈逐步补，或干脆把 GRMR release zip（~5 MB）整包打入。
+- **二进制体积优化到 ~15 MB**：ProGuard / R8 + reflect-only keep rules，主要砍 kotlin-reflect / scripting-jvm。预计 1-2 周（与 reflect 互动深）。
+- **ktor-client 等深反射场景**：本期 MVP 只覆盖 hello / jackson。ktor 涉及协程 + ClassLoader + ServiceLoader 复合反射，agent 一次跑过未必够，需多轮调试。
 
 ## 多 Kotlin 编译器版本支持
 

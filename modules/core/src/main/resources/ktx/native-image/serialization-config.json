@@ -1,0 +1,57 @@
+{
+  "types": [
+    {
+      "name": "kotlin.script.experimental.jvm.impl.KJvmCompiledScript"
+    },
+    {
+      "name": "kotlin.script.experimental.jvm.impl.KJvmCompiledScriptData"
+    },
+    {
+      "name": "kotlin.script.experimental.jvm.impl.KJvmCompiledModuleInMemory"
+    },
+    {
+      "name": "kotlin.script.experimental.util.PropertiesCollection"
+    },
+    {
+      "name": "kotlin.script.experimental.util.PropertiesCollection$Key"
+    },
+    {
+      "name": "kotlin.script.experimental.util.PropertiesCollection$CopiedKey"
+    },
+    {
+      "name": "kotlin.script.experimental.util.PropertiesCollection$TransientKey"
+    },
+    {
+      "name": "kotlin.script.experimental.api.ScriptCompilationConfiguration"
+    },
+    {
+      "name": "kotlin.script.experimental.api.ScriptEvaluationConfiguration"
+    },
+    {
+      "name": "kotlin.script.experimental.host.ScriptingHostConfiguration"
+    },
+    {
+      "name": "java.util.HashMap"
+    },
+    {
+      "name": "java.util.LinkedHashMap"
+    },
+    {
+      "name": "java.util.ArrayList"
+    },
+    {
+      "name": "java.lang.String"
+    },
+    {
+      "name": "java.lang.Integer"
+    },
+    {
+      "name": "java.lang.Long"
+    },
+    {
+      "name": "java.lang.Boolean"
+    }
+  ],
+  "lambdaCapturingTypes": [],
+  "proxies": []
+}

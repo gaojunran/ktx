@@ -3,8 +3,16 @@ build/
 out/
 .kotlin/
 .idea/
+.claude/
 *.iml
 .DS_Store
 local.properties
 samples/*.jar
-samples/*.jar
+# native binary outputs from `ktx compile --native`. Note: we don't ignore
+# samples/*.native-meta/ — that directory is intentionally checked in so
+# CI / other contributors can re-build identical binaries without re-running
+# the agent.
+samples/hello
+samples/jackson
+samples/hello.exe
+samples/jackson.exe

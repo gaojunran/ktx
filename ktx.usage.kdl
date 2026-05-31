@@ -24,10 +24,12 @@ cmd add {
         arg <SCRIPT>
 }
 cmd compile {
-        flag "-o --output" help="Output path. With --self-contained this is a directory; otherwise a jar file (defaults to <script>.jar next to the script)." {
+        flag "-o --output" help="Output path. With --self-contained this is a directory; with --native a binary; otherwise a jar file (defaults to <script>.jar / <script>/ / <script> next to the script)." {
                 arg <OUTPUT>
         }
         flag --self-contained help="Bundle a minimal JRE alongside the fat jar so end users do not need Java installed. Output is a directory tree (host platform only)."
+        flag --native help="Build a single-file native binary via GraalVM native-image. Requires `native-image` on PATH or under $GRAALVM_HOME / $JAVA_HOME. Produces a ~10-20 MB binary that needs no JRE. Mutually exclusive with --self-contained."
+        flag --collect-metadata help="Only meaningful with --native: run the fat jar once under native-image-agent to capture reflection / resource accesses before native-image starts. The captured metadata is saved to <script>.native-meta/ and re-used on subsequent builds."
         arg <SCRIPT>
 }
 cmd toolchain {

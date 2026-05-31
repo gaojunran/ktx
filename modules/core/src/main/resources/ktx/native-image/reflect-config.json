@@ -1,0 +1,31 @@
+[
+  {
+    "name": "io.github.nebula.ktx.core.script.KtsScript",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.nebula.ktx.core.script.KtsScriptDefinition",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.nebula.ktx.core.script.KtsEvaluationConfiguration",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.nebula.ktx.core.bootstrap.NativeBootstrap",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "kotlin.script.experimental.annotations.KotlinScript",
+    "allDeclaredMethods": true,
+    "queryAllDeclaredMethods": true
+  }
+]

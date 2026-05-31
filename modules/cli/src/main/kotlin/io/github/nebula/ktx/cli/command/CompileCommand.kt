@@ -5,6 +5,7 @@ import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import io.github.nebula.ktx.core.compile.CompileFlow
+import io.github.nebula.ktx.core.compile.NativeImageFlow
 import io.github.nebula.ktx.core.compile.SelfContainedFlow
 import io.github.nebula.ktx.core.exec.printReports
 import java.nio.file.Path
@@ -19,19 +20,24 @@ import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.system.exitProcess
 
 /**
- * `ktx compile <script> [-o <output>] [--self-contained]`
+ * `ktx compile <script> [-o <output>] [--self-contained | --native] [--collect-metadata]`
  *
- * Without `--self-contained`: produce a single fat jar runnable via
- * `java -jar`. Default output is `<script>.jar` next to the script.
+ * Three output flavours, mutually exclusive:
  *
- * With `--self-contained`: produce a directory layout
- * `<output>/{bin/<name>, lib/app.jar, runtime/}` that ships a minimal
- * jlink-built JRE alongside the fat jar. End users do not need any Java
- * install — just run `<output>/bin/<name>`.
+ * - **fat jar (default)** — single jar runnable via `java -jar`. Default output
+ *   `<script>.jar` next to the script.
+ * - **`--self-contained`** — directory `<output>/{bin/<name>, lib/app.jar, runtime/}`
+ *   with a jlink-built minimal JRE. End users only need to run the launcher.
+ * - **`--native`** — single native binary built by GraalVM `native-image`. ~10-20 MB,
+ *   ~10-50 ms cold start. End users need nothing — just run the file.
  *
- * Self-contained builds only target the host platform (jlink cannot
- * cross-compile). To distribute to another OS / architecture, run the
- * build on that platform.
+ * The `--collect-metadata` flag only applies with `--native`: it runs the fat jar
+ * once on the JVM with `native-image-agent` first to capture reflection traces,
+ * persisting them under `<script>.native-meta/` for re-use.
+ *
+ * Both `--self-contained` and `--native` only target the host platform (jlink and
+ * native-image both can't cross-compile). For multi-platform distribution, build
+ * each platform on its own runner.
  */
 class CompileCommand : CliktCommand(name = "compile") {
 
@@ -39,8 +45,8 @@ class CompileCommand : CliktCommand(name = "compile") {
 
     private val outputOption by option(
         "-o", "--output",
-        help = "Output path. With --self-contained this is a directory; " +
-            "otherwise a jar file (defaults to <script>.jar next to the script).",
+        help = "Output path. With --self-contained this is a directory; with --native a binary; " +
+            "otherwise a jar file (defaults to <script>.jar / <script>/ / <script> next to the script).",
     )
 
     private val selfContained by option(
@@ -49,11 +55,35 @@ class CompileCommand : CliktCommand(name = "compile") {
             "Output is a directory tree (host platform only).",
     ).flag()
 
+    private val nativeImage by option(
+        "--native",
+        help = "Build a single-file native binary via GraalVM native-image. " +
+            "Requires `native-image` on PATH or under \$GRAALVM_HOME / \$JAVA_HOME. " +
+            "Produces a ~10-20 MB binary that needs no JRE. Mutually exclusive with --self-contained.",
+    ).flag()
+
+    private val collectMetadata by option(
+        "--collect-metadata",
+        help = "Only meaningful with --native: run the fat jar once under native-image-agent " +
+            "to capture reflection / resource accesses before native-image starts. The captured " +
+            "metadata is saved to <script>.native-meta/ and re-used on subsequent builds.",
+    ).flag()
+
     override fun run() {
         val scriptPath = Path(scriptArg)
         require(scriptPath.exists() && scriptPath.isRegularFile()) { "script not found: $scriptArg" }
+        require(!(selfContained && nativeImage)) {
+            "--self-contained and --native are mutually exclusive"
+        }
+        require(!(collectMetadata && !nativeImage)) {
+            "--collect-metadata only applies with --native"
+        }
 
-        if (selfContained) runSelfContained(scriptPath) else runFatJar(scriptPath)
+        when {
+            selfContained -> runSelfContained(scriptPath)
+            nativeImage -> runNative(scriptPath)
+            else -> runFatJar(scriptPath)
+        }
     }
 
     private fun runFatJar(scriptPath: Path) {
@@ -95,6 +125,24 @@ class CompileCommand : CliktCommand(name = "compile") {
         echo("  lib/app.jar           compiled script (~${jarSizeMb} MB)")
         echo("  runtime/              embedded JRE (~${runtimeMb} MB)")
         echo("run with: $launcher [args...]")
+    }
+
+    private fun runNative(scriptPath: Path) {
+        val outputBin = outputOption?.let { Path(it) }
+            ?: scriptPath.resolveSibling(
+                stripScriptSuffix(scriptPath.fileName.toString()) + if (isWindows) ".exe" else "",
+            )
+        echo("compiling ${scriptPath.fileName} -> $outputBin (native binary)")
+        if (collectMetadata) {
+            echo("note: --collect-metadata will execute the script once under JVM agent before native-image runs.")
+        }
+        val result = NativeImageFlow().produce(scriptPath, outputBin, collectMetadata)
+        result.printReports()
+        if (result is ResultWithDiagnostics.Failure) exitProcess(1)
+
+        val sizeMb = outputBin.fileSize() / (1024 * 1024)
+        echo("artifact: $outputBin (~${sizeMb} MB)")
+        echo("run with: $outputBin [args...]")
     }
 
     /** Strip `.kts` / `.main.kts` suffix to get the base script name. */

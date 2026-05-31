@@ -11,7 +11,8 @@
 
 | 阶段 | 主题 | 文档 |
 |---|---|---|
-| Phase 3+ | TODO 列表（self-contained / native image / 多 Kotlin 版本等） | [phase-3-todo.md](./phase-3-todo.md) |
+| Phase 3+ | TODO 列表（jpackage / 多 Kotlin 版本 / GraalVM 工具链等） | [phase-3-todo.md](./phase-3-todo.md) |
+| Phase 3.2 | `ktx compile --native` —— GraalVM 单文件原生二进制 | [phase-3.2.md](./phase-3.2.md) |
 | Phase 2.4 | `ktx compile` 把脚本编译成独立 fat jar | [phase-2.4.md](./phase-2.4.md) |
 | Phase 2.3 | 流式 stdin + `--lock` via daemon | [phase-2.3.md](./phase-2.3.md) |
 | Phase 2.2 | daemon 路由 + 并发 + 生命周期 + frozen via daemon | [phase-2.2.md](./phase-2.2.md) |

@@ -11,7 +11,7 @@
 - [`ktx eval <-e --expr <EXPR>> [ARGS]…`](/cli/eval.md)
 - [`ktx lock <SCRIPT>`](/cli/lock.md)
 - [`ktx add [--no-lock] <COORDINATES> <SCRIPT>`](/cli/add.md)
-- [`ktx compile [-o --output <OUTPUT>] [--self-contained] <SCRIPT>`](/cli/compile.md)
+- [`ktx compile [FLAGS] <SCRIPT>`](/cli/compile.md)
 - [`ktx toolchain <SUBCOMMAND>`](/cli/toolchain.md)
 - [`ktx toolchain list`](/cli/toolchain/list.md)
 - [`ktx toolchain install <MAJOR>`](/cli/toolchain/install.md)

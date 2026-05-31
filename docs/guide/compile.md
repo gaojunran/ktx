@@ -163,48 +163,70 @@ A few extra modules — `jdk.unsupported`, `java.naming`, `java.logging` — are
 - Locked-down hosts where you cannot install or update a system JRE.
 - Reproducible artifacts: the JRE version is pinned to whatever JDK ran `ktx compile`.
 
-## Self-contained: zero Java required
+## Native binary: zero Java, single file
 
-`--self-contained` wraps the fat jar in a directory that ships its own minimal JRE. End users do not need Java installed at all — they extract the directory and run `bin/<name>`.
+`--native` produces a single executable file via GraalVM `native-image`. End users get one binary they double-click or `chmod +x` and run; no JRE, no fat jar, nothing else.
 
 ```bash
-$ ktx compile samples/hello.main.kts --self-contained -o ./hello-app
-[INFO] compile /path/to/samples/hello.main.kts
-[INFO] modules: detected=[java.base, java.logging, ...], final=[java.base, ...]
-artifact: ./hello-app/  (~42 MB)
-layout:
-  bin/hello-app    launcher
-  lib/app.jar      compiled script (~11 MB)
-  runtime/         embedded JRE (~31 MB)
-run with: ./hello-app/bin/hello-app [args...]
+$ ktx compile samples/hello.main.kts --native --collect-metadata
+compiling hello.main.kts -> samples/hello (native binary)
+note: --collect-metadata will execute the script once under JVM agent before native-image runs.
+[INFO] native-image: /Users/.../bin/native-image
+[INFO] fat jar built: /tmp/.../app.jar (11315 KB)
+[INFO] running fat jar under native-image-agent (this executes the script body)...
+hello from main.kts
+[INFO] script metadata persisted to samples/hello.main.kts.native-meta
+[INFO] native-image build (this takes 30-180s)...
+... <native-image progress bar> ...
+artifact: samples/hello (~38 MB)
+run with: samples/hello [args...]
 
-$ ./hello-app/bin/hello-app foo bar
+$ time ./samples/hello arg1 arg2
 hello from main.kts
 args (2):
-  [0] foo
-  [1] bar
+  [0] arg1
+  [1] arg2
+real    0m0.022s
 ```
 
-Under the hood:
+### How `--collect-metadata` works
 
-1. Build the fat jar (same as the default path above).
-2. `jdeps --print-module-deps` reads the fat jar and reports the JDK modules it actually uses.
-3. `jlink --add-modules <list> --compress=2 --strip-debug` produces a minimal runtime under `runtime/`.
-4. A small launcher script (`/bin/sh` on macOS / Linux, `.bat` on Windows) chains the bundled `java` to `lib/app.jar`.
+GraalVM analyses your fat jar at build time and emits a binary that excludes everything it cannot prove reachable. Reflection, dynamic class loading, JDK serialisation and resource lookups are invisible to that analysis, so they need to be declared explicitly via JSON metadata. ktx supplies three layers:
 
-A few extra modules — `jdk.unsupported`, `java.naming`, `java.logging` — are unioned in unconditionally because `jdeps` cannot trace classes loaded reflectively, and they are cheap to keep.
+1. **Built-in base** — covers the Kotlin scripting host's own reflection paths (`KtsScript`, `KJvmCompiledScript`, `META-INF/services/...`, `kotlin_builtins` resources). Always applied.
+2. **GraalVM Reachability Metadata Repository (GRMR) subset** — bundled inside ktx for popular libraries like jackson. When your script declares `@file:DependsOn("com.fasterxml.jackson.core:jackson-databind:...")`, ktx finds the matching entry and feeds it to native-image automatically.
+3. **Per-script trace** — `--collect-metadata` runs the fat jar once on the JVM with `native-image-agent` attached, capturing every reflection / resource / serialisation event. The recording lands in `<script>.native-meta/` next to the source. **Subsequent builds re-use that directory** without re-running the agent.
+
+Once `<script>.native-meta/` exists, `ktx compile --native <script>` (no flag) is sufficient — and the directory is safe to commit to source control to make builds deterministic across machines.
+
+### What gets distributed
+
+A native binary is **completely self-contained**. The metadata JSON only matters at build time; everything reachable is compiled into the binary itself. End users receive nothing but the binary and run it.
+
+| Artifact | Required to run | Size |
+| --- | --- | ---: |
+| Fat jar (default) | JRE 17+ | ~11–13 MB |
+| Self-contained dir | nothing | ~40–60 MB |
+| **Native binary (`--native`)** | **nothing** | **~38–41 MB** |
 
 ### Trade-offs
 
-- **Size**: ~40 MB for a no-deps script, ~60 MB once a database driver or large JSON library lands. About 4× the fat jar but absolutely flat for the end user.
-- **Host platform only**: `jlink` cannot cross-compile. To distribute to macOS, Linux, and Windows, run `ktx compile --self-contained` once per platform.
-- **Build host needs a JDK**: `jdeps` and `jlink` ship with the JDK, not the JRE. ktx will exit with a clear error if either is missing.
+- **Build cost is high**: 30–180 s on a modern laptop, peak RSS ~3 GB. Don't run `--native` on every code change. Use it for releases.
+- **Host platform only**: like `jlink`, `native-image` does not cross-compile. To distribute to macOS, Linux, and Windows, run `ktx compile --native` once per platform (typically in CI matrices).
+- **Build host needs GraalVM**: install via `mise use -g java@oracle-graalvm-21.0.7` (recommended) or any other GraalVM 21+ distribution. ktx looks for `native-image` under `$GRAALVM_HOME/bin`, then `$JAVA_HOME/bin`, then on `PATH`.
+- **`--no-fallback` is mandatory**: ktx always passes `--no-fallback` so missing reflection metadata fails the build instead of producing a bloated fallback image. Re-run with `--collect-metadata` if a previously unrecorded reflection path appears.
+- **Side effects fire during `--collect-metadata`**: the agent runs your script body to record what it does. If the script makes HTTP calls or mutates state, that happens once at build time — same caveat as the fat-jar `compile` flow.
 
 ### When to use it
 
-- Tools for non-developer audiences who balk at "first install Java".
-- Locked-down hosts where you cannot install or update a system JRE.
-- Reproducible artifacts: the JRE version is pinned to whatever JDK ran `ktx compile`.
+- Distributing CLI tools to end users who don't have any Java setup at all.
+- Performance-critical short-lived scripts where the ~10 ms startup of a native binary matters versus ~200 ms for `java -jar`.
+- Embedding scripts inside container images where size and start-time both matter.
+
+### When *not* to use it
+
+- During development. Fat jar (`ktx compile`) or daemon mode (`ktx run --daemon`) are dramatically faster for the dev loop.
+- For scripts whose reflection surface changes often. The `--collect-metadata` recording captures one execution path; if your script branches on data and calls reflection conditionally, run `--collect-metadata` enough times to cover every branch (the agent merges runs in `<script>.native-meta/`).
 
 ## Further reduction (planned)
 
@@ -212,8 +234,8 @@ A few extra modules — `jdk.unsupported`, `java.naming`, `java.logging` — are
 | --- | --- | --- |
 | Fat jar (Phase 2.4) | shipped | 13 MB |
 | `--self-contained` (Phase 3.1) | shipped | 40-60 MB total, zero user deps |
+| **`--native` (Phase 3.2)** | **shipped** | **~38-41 MB native binary, ~10-25 ms startup** |
 | ProGuard / R8 reflect-only keeps | Phase 3+ | ~10 MB |
 | `jpackage` installer (.dmg / .deb / .exe) | Phase 3+ | wraps `--self-contained` |
-| GraalVM native image | Phase 3.2 | ~10 MB native binary, ~10 ms startup |
 
-The `--native` flag and `jpackage` installer mode are tracked in the [Phase 3 TODO](https://github.com/gaojunran/ktx/blob/main/reports/phase-3-todo.md).
+The `jpackage` installer mode is tracked in the [Phase 3 TODO](https://github.com/gaojunran/ktx/blob/main/reports/phase-3-todo.md).

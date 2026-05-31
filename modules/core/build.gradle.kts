@@ -7,6 +7,8 @@ dependencies {
     api(libs.kotlin.main.kts)
     implementation(libs.slf4j.api)
     implementation(libs.tomlj)
+    // For merging GraalVM native-image metadata JSON files (NativeImageFlow).
+    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(kotlin("test"))
 }

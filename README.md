@@ -1,10 +1,18 @@
-# ktx
+<p align="center">
+  <a href="https://gaojunran.github.io/ktx/">
+    <img src="assets/logo.svg" alt="ktx" width="320">
+  </a>
+</p>
 
-A modern Kotlin script runner. What `uv` is for Python and `bun` is for JavaScript, ktx aims to be for `.kts`.
+<p align="center">
+  A modern Kotlin script runner. What <code>uv</code> is for Python and <code>bun</code> is for JavaScript, ktx aims to be for <code>.kts</code>.
+</p>
 
-[![Documentation](https://img.shields.io/badge/docs-gaojunran.github.io%2Fktx-blue?logo=vitepress&logoColor=white)](https://gaojunran.github.io/ktx/)
-[![Latest release](https://img.shields.io/github/v/release/gaojunran/ktx?include_prereleases&sort=semver&logo=github)](https://github.com/gaojunran/ktx/releases)
-[![CI](https://github.com/gaojunran/ktx/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gaojunran/ktx/actions/workflows/ci.yml)
+<p align="center">
+  <a href="https://gaojunran.github.io/ktx/"><img alt="Documentation" src="https://img.shields.io/badge/docs-gaojunran.github.io%2Fktx-blue?logo=vitepress&logoColor=white"></a>
+  <a href="https://github.com/gaojunran/ktx/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/gaojunran/ktx?include_prereleases&sort=semver&logo=github"></a>
+  <a href="https://github.com/gaojunran/ktx/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/gaojunran/ktx/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+</p>
 
 > 📖 **Full documentation lives at [gaojunran.github.io/ktx](https://gaojunran.github.io/ktx/)** — guides, CLI reference, performance benchmarks, and design notes.
 

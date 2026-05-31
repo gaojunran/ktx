@@ -12,16 +12,19 @@ export default withMermaid(defineConfig({
   // serve from a different prefix (e.g. a custom domain at root).
   base: process.env.KTX_DOCS_BASE ?? '/ktx/',
 
-  // Deployed at https://gaojunran.github.io/ktx/ — base must match the repo
-  // name so all assets resolve correctly. Override with KTX_DOCS_BASE to
-  // serve from a different prefix (e.g. a custom domain at root).
-  base: process.env.KTX_DOCS_BASE ?? '/ktx/',
-
   head: [
-    ['link', { rel: 'icon', href: '/favicon.ico' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/ktx/logo-mark.svg' }],
+    ['meta', { name: 'theme-color', content: '#5894FF' }],
   ],
 
   themeConfig: {
+    // Nav-bar logo. VitePress renders this at ~22 px tall by default,
+    // which is exactly what the compact mark is designed for.
+    logo: { src: '/logo-mark.svg', width: 24, height: 24 },
+
+    // Site title remains "ktx" plain text next to the logo.
+    siteTitle: 'ktx',
+
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },
       { text: 'Performance', link: '/performance' },

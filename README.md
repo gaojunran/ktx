@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://gaojunran.github.io/ktx/">
-    <img src="assets/logo.svg" alt="ktx" width="320">
+    <img src="assets/logo.png" alt="ktx" width="200">
   </a>
 </p>
 

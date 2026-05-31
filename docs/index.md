@@ -6,7 +6,7 @@ hero:
   text: "A modern Kotlin script runner"
   tagline: "What uv is for Python and bun is for JavaScript, ktx aims to be for .kts"
   image:
-    src: /logo-mark.svg
+    src: /logo-mark.png
     alt: ktx logo
   actions:
     - theme: brand

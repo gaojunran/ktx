@@ -13,14 +13,13 @@ export default withMermaid(defineConfig({
   base: process.env.KTX_DOCS_BASE ?? '/ktx/',
 
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/ktx/logo-mark.svg' }],
-    ['meta', { name: 'theme-color', content: '#5894FF' }],
+    ['link', { rel: 'icon', type: 'image/png', href: '/ktx/favicon.png' }],
+    ['meta', { name: 'theme-color', content: '#7F52FF' }],
   ],
 
   themeConfig: {
-    // Nav-bar logo. VitePress renders this at ~22 px tall by default,
-    // which is exactly what the compact mark is designed for.
-    logo: { src: '/logo-mark.svg', width: 24, height: 24 },
+    // Nav-bar logo. The PNG mark is square and reads well at 24px.
+    logo: { src: '/logo-mark.png', width: 24, height: 24 },
 
     // Site title remains "ktx" plain text next to the logo.
     siteTitle: 'ktx',

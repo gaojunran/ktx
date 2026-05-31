@@ -13,6 +13,7 @@ import io.github.nebula.ktx.core.deps.Lockfile
 import io.github.nebula.ktx.core.deps.LockingFlow
 import io.github.nebula.ktx.core.exec.ScriptRunner
 import io.github.nebula.ktx.core.exec.printReports
+import io.github.nebula.ktx.toolchain.ToolchainStore
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import kotlin.io.path.Path
@@ -55,8 +56,8 @@ class RunCommand : CliktCommand(name = "run") {
 
     override fun run() {
         require(!(frozen && refreshLock)) { "--frozen 与 --lock 互斥" }
-        require(!(daemon && (frozen || refreshLock))) {
-            "Phase 2.1 daemon 暂不支持 --frozen / --lock，请暂时关掉 --daemon"
+        require(!(daemon && refreshLock)) {
+            "--lock 暂不支持 --daemon（lock 流程要禁用编译缓存，daemon 共享缓存场景下逻辑未定）"
         }
 
         if (daemon) {
@@ -79,20 +80,79 @@ class RunCommand : CliktCommand(name = "run") {
     }
 
     private fun runViaDaemon(): Nothing {
-        val client = DaemonLifecycle.ensureRunning()
+        val (jdkMajor, javaBin) = pickToolchain()
+        val client = DaemonLifecycle.ensureRunning(jdkMajor, javaBin)
+        val (resolverMode, lockfilePath) = pickResolver()
+
         val exitCode = if (scriptArg == "-") {
+            // `ktx run -` 语义：从 stdin 读脚本源码，inline 跑。
+            // 注意 stdin 不会再当数据传给脚本（脚本读 stdin 此时拿不到，
+            // 因为已被读光当源码用了）。这是 Phase 1 起就有的语义。
             val source = System.`in`.bufferedReader().readText()
-            client.run(scriptPath = null, inlineSource = source, scriptArgs = scriptArgs, virtualName = "<stdin>")
+            client.run(
+                scriptPath = null,
+                inlineSource = source,
+                scriptArgs = scriptArgs,
+                virtualName = "<stdin>",
+                resolverMode = io.github.nebula.ktx.proto.v1.ResolverMode.NORMAL,
+            )
         } else {
             val path = resolveScript(scriptArg)
-            // toolchain dispatch：daemon 路径下 jdk 切换语义还没设计 ——
-            // Phase 2.1 暂时让 daemon 用启动它的 JDK 跑。声明了不同 jdk 的
-            // 脚本应当走非 daemon 路径或先 ktx toolchain install 后启动 daemon
-            // 时手动指定 JDK（待 Phase 2.3 完善）。
             preflightToolchain(path)
-            client.run(scriptPath = path, inlineSource = null, scriptArgs = scriptArgs)
+            // stdin 透传：Phase 2.2 暂未实装。用 `--daemon` 跑会读 stdin 的脚本时，
+            // daemon 那边的 System.in 是 /dev/null，readLine() 会得到 null。需要
+            // 此功能的用户暂时去掉 --daemon 即可。Phase 2.3 加流式 stdin 透传。
+            val stdinBytes: ByteArray? = null
+            client.run(
+                scriptPath = path,
+                inlineSource = null,
+                scriptArgs = scriptArgs,
+                resolverMode = resolverMode,
+                lockfilePath = lockfilePath,
+                stdin = stdinBytes,
+            )
         }
         exitProcess(exitCode)
+    }
+
+    /**
+     * 把 CLI 选项 → daemon 协议 ResolverMode + 可选 lockfile 路径。
+     */
+    private fun pickResolver(): Pair<io.github.nebula.ktx.proto.v1.ResolverMode, Path?> {
+        if (!frozen) return io.github.nebula.ktx.proto.v1.ResolverMode.NORMAL to null
+        if (scriptArg == "-") error("stdin 模式不支持 --frozen（没有对应的 lockfile）")
+        val path = resolveScript(scriptArg)
+        val lockPath = Lockfile.pathFor(path)
+        require(lockPath.exists()) {
+            "frozen 模式需要 lockfile，但找不到：$lockPath。先运行 `ktx lock $scriptArg` 生成。"
+        }
+        return io.github.nebula.ktx.proto.v1.ResolverMode.FROZEN to lockPath
+    }
+
+    /**
+     * 根据脚本声明的 `@file:Toolchain(jdk = ...)` 决定要哪个 JDK 主版本：
+     *   - 脚本未声明 → 当前 JVM 主版本（不动 JDK，daemon 用启动 ktx 的那个）
+     *   - 声明了但与当前一致 → 同上
+     *   - 声明的版本不同 → 找已装 JDK；没装就装一个；用它的 java 启 daemon
+     *
+     * 返回 (主版本号, java 可执行文件路径或 null)。null 表示用当前 JVM。
+     */
+    private fun pickToolchain(): Pair<Int, String?> {
+        val current = Runtime.version().feature()
+        if (scriptArg == "-") return current to null  // stdin 模式无脚本可扫描
+
+        val path = java.nio.file.Path.of(scriptArg).takeIf { it.toFile().isFile } ?: return current to null
+        val tc = ToolchainHeaderScanner.scan(path)
+        val requested = tc.jdk.takeIf { it.isNotEmpty() }?.substringBefore('.')?.toIntOrNull()
+            ?: return current to null
+        if (requested == current) return current to null
+
+        val store = ToolchainStore()
+        val install = store.find(requested) ?: run {
+            log.info("脚本要求 JDK {}，本地未装，开始下载", requested)
+            store.install(requested)
+        }
+        return requested to install.javaBin.toAbsolutePath().toString()
     }
 
     private fun runFile(runner: ScriptRunner): ResultWithDiagnostics<*> {

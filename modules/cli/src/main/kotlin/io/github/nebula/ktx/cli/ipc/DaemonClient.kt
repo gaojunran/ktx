@@ -4,6 +4,7 @@ import io.github.nebula.ktx.daemon.DaemonPaths
 import io.github.nebula.ktx.proto.v1.Frames
 import io.github.nebula.ktx.proto.v1.PROTOCOL_VERSION
 import io.github.nebula.ktx.proto.v1.RequestEnvelope
+import io.github.nebula.ktx.proto.v1.ResolverMode
 import io.github.nebula.ktx.proto.v1.ResponseEnvelope
 import io.github.nebula.ktx.proto.v1.RunRequest
 import io.github.nebula.ktx.proto.v1.ShutdownRequest
@@ -39,6 +40,9 @@ class DaemonClient(
         inlineSource: String?,
         scriptArgs: List<String>,
         virtualName: String = "<inline>",
+        resolverMode: ResolverMode = ResolverMode.NORMAL,
+        lockfilePath: Path? = null,
+        stdin: ByteArray? = null,
     ): Int {
         require((scriptPath == null) xor (inlineSource == null)) { "scriptPath / inlineSource 二选一" }
 
@@ -50,9 +54,12 @@ class DaemonClient(
                 .addAllArgs(scriptArgs)
                 .setVirtualName(virtualName)
                 .setCwd(System.getProperty("user.dir"))
+                .setResolverMode(resolverMode)
                 .also {
                     if (scriptPath != null) it.scriptPath = scriptPath.toAbsolutePath().toString()
                     if (inlineSource != null) it.inlineSource = inlineSource
+                    if (lockfilePath != null) it.lockfilePath = lockfilePath.toAbsolutePath().toString()
+                    if (stdin != null) it.stdin = com.google.protobuf.ByteString.copyFrom(stdin)
                 }
                 .build()
             Frames.write(

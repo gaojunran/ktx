@@ -1,6 +1,7 @@
 <configuration>
+    <property name="DAEMON_DIR" value="${ktx.daemon.dir:-${user.home}/.cache/ktx/d}"/>
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
-        <file>${user.home}/.cache/ktx/d/log</file>
+        <file>${DAEMON_DIR}/log</file>
         <encoder>
             <pattern>%d{HH:mm:ss.SSS} %-5level %logger{20} - %msg%n</pattern>
         </encoder>

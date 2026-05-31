@@ -44,6 +44,19 @@ message RunRequest {
   repeated string args = 3;
   string virtual_name = 4;    // inline 模式的诊断文件名
   string cwd = 5;             // 客户端的工作目录，daemon 内 chdir 用
+
+  // 依赖解析模式，Phase 2.2 起：
+  //   NORMAL（默认）：用 main-kts 默认 resolver，联网走 Aether
+  //   FROZEN：仅按 lockfile_path 指向的 lockfile 解析，不联网
+  // 后续可加 RECORD（lock 流程）。
+  ResolverMode resolver_mode = 6;
+  string lockfile_path = 7;   // FROZEN 模式必填，绝对路径
+  bytes stdin = 8;            // 一次性传整个 stdin（Phase 2.2 简化版）
+}
+
+enum ResolverMode {
+  NORMAL = 0;
+  FROZEN = 1;
 }
 
 // daemon 流式回传：脚本运行期间的 stdout/stderr 字节，最后一个 Exit。

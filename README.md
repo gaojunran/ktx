@@ -2,7 +2,7 @@
 
 A modern Kotlin script runner — what `uv` is for Python, ktx aims to be for `.kts`.
 
-> 当前状态：**Phase 2.2 完成**。daemon 按 JDK 主版本路由 + 并发 + 空闲自杀 + AppCDS。`ktx run --frozen --daemon` 暖时 170ms，CI 场景从首次 6.7s 一路降到 170ms。
+> 当前状态：**Phase 2.4 完成**。`ktx compile foo.kts` 输出独立 fat jar（11-13 MB），`java -jar` 直接跑，end user 只需 JRE 17+，不依赖 ktx 也不依赖 Kotlin 编译器。
 >
 > 每一波改动的详细中文实施日志见 [`docs/`](docs/README.md)。
 
@@ -43,6 +43,9 @@ $KTX run samples/toolchain.main.kts         # 脚本声明 @file:Toolchain(jdk="
 $KTX run --daemon samples/hello.main.kts    # 通过 daemon 跑（首次 fork，后续暖）
 $KTX daemon status                          # 查 daemon 状态
 $KTX daemon stop                            # 优雅关闭
+
+$KTX compile samples/hello.main.kts         # 编译成独立 fat jar
+java -jar samples/hello.jar foo bar         # 跑产物（不需要 ktx，仅 JRE）
 ```
 
 ## 已实现 / 计划
@@ -56,7 +59,8 @@ $KTX daemon stop                            # 优雅关闭
 | Phase 1.4 | CLI AppCDS 归档（启动开销 -80ms） | 完成 |
 | Phase 2.1 | 最小 daemon（dev loop -60%） | 完成 |
 | Phase 2.2 | daemon 路由 + 并发 + 生命周期 + frozen via daemon | 完成 |
-| Phase 2.3 | 流式 stdin + 多 Kotlin 编译器版本 | 计划中 |
+| Phase 2.4 | `ktx compile` 编译为独立 fat jar | 完成 |
+| Phase 2.3 | 流式 stdin + `--lock` via daemon | 计划中 |
 | Phase 3 | `kts compile`、`kts watch`、native image | 计划中 |
 
 ## 项目布局

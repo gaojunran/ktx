@@ -4,6 +4,7 @@
 
 | 阶段 | 主题 | 文档 |
 |---|---|---|
+| Phase 2.4 | `ktx compile` 把脚本编译成独立 fat jar | [phase-2.4.md](./phase-2.4.md) |
 | Phase 2.2 | daemon 路由 + 并发 + 生命周期 + frozen via daemon | [phase-2.2.md](./phase-2.2.md) |
 | Phase 2.1 | daemon 最小可运行版（dev loop 加速 60%） | [phase-2.1.md](./phase-2.1.md) |
 | Phase 1.4 | AppCDS 归档削掉 ~80ms 启动开销 | [phase-1.4.md](./phase-1.4.md) |

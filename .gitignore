@@ -6,3 +6,5 @@ out/
 *.iml
 .DS_Store
 local.properties
+samples/*.jar
+samples/*.jar

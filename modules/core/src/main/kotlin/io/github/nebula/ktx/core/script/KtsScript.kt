@@ -3,13 +3,16 @@ package io.github.nebula.ktx.core.script
 import org.jetbrains.kotlin.mainKts.CompilerOptions
 import org.jetbrains.kotlin.mainKts.Import
 import org.jetbrains.kotlin.mainKts.MainKtsConfigurator
+import org.jetbrains.kotlin.mainKts.configureConstructorArgsFromMainArgs
 import kotlin.script.experimental.annotations.KotlinScript
 import kotlin.script.experimental.api.ScriptAcceptedLocation
 import kotlin.script.experimental.api.ScriptCompilationConfiguration
+import kotlin.script.experimental.api.ScriptEvaluationConfiguration
 import kotlin.script.experimental.api.acceptedLocations
 import kotlin.script.experimental.api.defaultImports
 import kotlin.script.experimental.api.ide
 import kotlin.script.experimental.api.refineConfiguration
+import kotlin.script.experimental.api.refineConfigurationBeforeEvaluate
 import kotlin.script.experimental.dependencies.DependsOn
 import kotlin.script.experimental.dependencies.ExternalDependenciesResolver
 import kotlin.script.experimental.dependencies.Repository
@@ -30,12 +33,21 @@ import kotlin.script.experimental.jvm.jvm
  * 注入的版本。
  *
  * 这种 ThreadLocal 模式不优雅，但在脚本编译这种「单线程、单脚本一个 host」
- * 的场景下完全够用。Phase 2 上 daemon 后每个请求一个 worker 线程，仍然
- * 适用。
+ * 的场景下完全够用。
+ *
+ * **EvaluationConfiguration 的必要性（Phase 2.4）**：
+ *   - ktx run 模式下，ScriptRunner 显式调 createJvmEvaluationConfigurationFromTemplate
+ *     + constructorArgs(scriptArgs)，所以 KtsScript(args) 拿到正确入参。
+ *   - ktx compile 模式下，产物 jar 走 RunnerKt 默认入口，evaluation config
+ *     在编译时就要 baked 进 .class —— 这就要求 @KotlinScript 注解里**必须**
+ *     声明 evaluationConfiguration = KtsEvaluationConfiguration::class，
+ *     里面用 [configureConstructorArgsFromMainArgs] 把 main(String[]) 的
+ *     args 自动注入构造器。否则跑产物时报 "wrong number of arguments"。
  */
 @KotlinScript(
     fileExtension = "kts",
     compilationConfiguration = KtsScriptDefinition::class,
+    evaluationConfiguration = KtsEvaluationConfiguration::class,
 )
 abstract class KtsScript(val args: Array<String>)
 
@@ -73,6 +85,20 @@ class KtsScriptDefinition : ScriptCompilationConfiguration(
         ide {
             acceptedLocations(ScriptAcceptedLocation.Everywhere)
         }
+    },
+)
+
+/**
+ * 评估配置：让 KtsScript 的 `args` 构造参数自动从 main(String[]) 注入。
+ *
+ * Phase 2.4 起：声明此 evaluationConfiguration 是 ktx compile 产物 jar 能直接
+ * 跑起来的前提。编译产物 .class 里嵌的 KJvmCompiledScript 引用了这个 class，
+ * RunnerKt 调 createEvaluationConfigurationFromTemplate 时会用它的钩子把
+ * mainArguments 转成 constructorArgs。
+ */
+class KtsEvaluationConfiguration : ScriptEvaluationConfiguration(
+    {
+        refineConfigurationBeforeEvaluate(::configureConstructorArgsFromMainArgs)
     },
 )
 

@@ -149,18 +149,42 @@ ktx will check the requested major version, install it on demand, and re-exec it
 ```
 ktx daemon status [--all] [--jdk <MAJOR>]
 ktx daemon stop   [--all] [--jdk <MAJOR>]
+ktx daemon logs   [--all] [--jdk <MAJOR>] [--tail N | -n N] [--path]
 ```
 
-Inspect or stop daemon instances.
+Inspect, stop, or read logs for daemon instances.
 
 ```bash
 ktx daemon status                   # current-JDK daemon
 ktx daemon status --all             # all daemons across JDK versions
 ktx daemon stop --jdk 17            # stop only the JDK-17 daemon
 ktx daemon stop --all               # stop everything
+ktx daemon logs                     # last 100 lines of current-JDK daemon's log
+ktx daemon logs --tail 0            # full log
+ktx daemon logs --path              # just print the log file path
+ktx daemon logs --all --tail 20     # last 20 lines of every daemon's log
 ```
 
 Daemon instances are stored under `~/.cache/ktx/d/<key12>/`, keyed by `(jdkMajor, protocolVersion)`.
+
+## `ktx cache`
+
+```
+ktx cache info
+ktx cache clean
+ktx cache gc [--max-size <SPEC>]
+```
+
+Manage the script-compile cache at `~/.cache/ktx/compiled/`. main-kts writes one jar per compiled script, named by sha256 of source plus configuration; over time these accumulate.
+
+```bash
+ktx cache info             # path, entry count, total size, oldest/newest
+ktx cache clean            # remove every cached jar
+ktx cache gc               # LRU evict until total <= 2 GB (default)
+ktx cache gc --max-size 500MB
+```
+
+`gc` sorts entries by mtime ascending and deletes from the head until the cap is met. It does not consider age or file count. Re-running `gc` is idempotent. Out of scope: the daemon directory at `~/.cache/ktx/d/` is managed by `ktx daemon stop`; `ktx cache *` will not touch it.
 
 ### Environment variables
 

@@ -140,13 +140,17 @@ jobs:
   # Only deploys on pushes to main. PRs build the site (above) but never
   # publish, so we can verify the build without exposing in-flight changes.
   deploy-docs:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: >
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      !failure() &&
+      !cancelled()
     needs:
       - test
       # benchmark commits a fresh results.json before docs deploy so the
       # published perf page picks it up. If benchmark is skipped (PRs or
-      # tag pushes — though tags don't reach here anyway) the dependency
-      # uses `if: !cancelled()` semantics via job-level if checks.
+      # tag pushes) the dependency still resolves; !failure() allows deploy
+      # to run even when upstream jobs are skipped.
       - benchmark
       # render does the same for the auto-generated CLI reference under
       # docs/cli/, regenerated from the live clikt tree on every push.

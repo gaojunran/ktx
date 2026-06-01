@@ -183,6 +183,28 @@ Mordant 与 clikt 同作者，已在 ktx 依赖树中（clikt 传递依赖 morda
 | 3 | 模块命名？ | **`shell`**。语义精确，未来需要更通用 stdlib 时再扩展。 |
 | 4 | 协程默认作用域？ | **脚本级**。在 `KtsScript` 基类中注入 `CoroutineScope`，脚本顶层默认在 scope 内执行，无需 `runBlocking`。 |
 
+## 后续变更：ShellScope 作用域级 `cd` 和 `env`
+
+**时间：2026-06-02**
+
+`ShellScope` 从空壳升级为持有共享状态的 receiver：
+
+- `workingDir: Path?` —— `cd("/tmp")` 后，后续 `"cmd"()` 自动继承
+- `sharedEnv: MutableMap<String, String>` —— `env("KEY", "val")` 后，后续命令自动注入环境变量
+
+命令级的 `.cwd()` 和 `.env()` 覆盖作用域默认值（后合并）。
+
+```kotlin
+val result = shell {
+    cd("/tmp")
+    env("MY_VAR", "hello")
+    "pwd"().text().trim()   // /tmp
+    "env"().text()          // 包含 MY_VAR=hello
+}
+```
+
+同时 `shell { }` 的签名从 `suspend fun shell(block: suspend ShellScope.() -> Unit)` 改为泛型 `suspend fun <T> shell(block: suspend ShellScope.() -> T): T`，允许块内返回值。
+
 ## 相关链接
 
 - dax 文档：https://dax.land/

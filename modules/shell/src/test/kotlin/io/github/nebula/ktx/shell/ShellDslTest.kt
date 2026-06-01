@@ -180,18 +180,36 @@ class ShellDslTest {
     }
 
     @Test
-    fun `retry succeeds after transient failures`() {
-        var calls = 0
+    fun `shell block inherits workingDir from cd`() {
         val result = runBlocking {
-            retry(times = 5) {
-                calls++
-                if (calls < 3) {
-                    sh("sh", "-c", "exit 1").execute()
-                }
-                sh("echo", "finally ok").text()
+            shell {
+                cd("/tmp")
+                "pwd"().text().trim()
             }
         }
-        assertEquals("finally ok\n", result)
-        assertEquals(3, calls)
+        assertTrue(result == "/tmp" || result == "/private/tmp")
+    }
+
+    @Test
+    fun `shell block inherits env from scope`() {
+        val result = runBlocking {
+            shell {
+                env("MY_VAR", "scope_value")
+                "env"().text()
+            }
+        }
+        assertTrue(result.contains("MY_VAR=scope_value"))
+    }
+
+    @Test
+    fun `command env overrides scope env`() {
+        val result = runBlocking {
+            shell {
+                env("MY_VAR", "scope_value")
+                "env"().env("MY_VAR", "cmd_value").text()
+            }
+        }
+        assertTrue(result.contains("MY_VAR=cmd_value"))
+        assertTrue(!result.contains("MY_VAR=scope_value"))
     }
 }

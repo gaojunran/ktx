@@ -37,6 +37,24 @@ val result = (sh("echo", "foo bar baz") pipe sh("grep", "bar")).text()
 println(result) // foo bar baz
 ```
 
+## Shell block with scoped `cd` and `env`
+
+Use `shell { }` for a block where every command inherits the current working directory and environment:
+
+```kotlin
+val result = shell {
+    cd("/tmp")
+    env("MY_VAR", "hello")
+
+    val pwd = "pwd"().text().trim()   // /tmp
+    val envOut = "env"().text()         // contains MY_VAR=hello
+    pwd
+}
+println(result) // /tmp
+```
+
+Command-level `.cwd()` and `.env()` override the scope defaults.
+
 ## Working directory and environment
 
 ```kotlin

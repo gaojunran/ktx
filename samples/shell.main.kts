@@ -48,3 +48,23 @@ val ok = retry(times = 3, delay = 1.seconds) {
     sh("echo", "retry succeeded").text()
 }
 println(ok.trim())
+
+// ------------------------------------------------------------------
+// Shell block — scope-level cwd and env
+// ------------------------------------------------------------------
+
+import kotlinx.coroutines.runBlocking
+
+runBlocking {
+    val branch = shell {
+        cd("/tmp")
+        env("MY_VAR", "from_shell_block")
+
+        val pwd = "pwd"().text().trim()
+        val envOut = "env"().text()
+
+        "pwd"().text().trim() + "\n" +
+            if (envOut.contains("MY_VAR=from_shell_block")) "env OK" else "env FAILED"
+    }
+    println(branch)
+}

@@ -45,8 +45,6 @@ jobs:
         with:
           experimental: true
 
-      - uses: gradle/actions/setup-gradle@v4
-
       - name: Resolve tag and version
         id: ver
         run: |

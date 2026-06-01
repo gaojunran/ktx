@@ -49,10 +49,6 @@ jobs:
         with:
           experimental: true
 
-      # gradle/actions/setup-gradle wires up Gradle's own build cache, which
-      # is much more effective than caching ~/.gradle/caches by hand.
-      - uses: gradle/actions/setup-gradle@v4
-
       - name: Run tests
         run: mise run test
 
@@ -62,12 +58,13 @@ jobs:
       - name: Build VitePress site
         run: mise run docs:build
 
-  # Benchmark on every push to main (skipped on PRs / tag pushes to keep
-  # CI snappy and avoid noisy commits on release tags). Result is committed
-  # back to main via stefanzweifel/git-auto-commit-action; the perf page
-  # rebuilds on the next docs deploy.
+  # Benchmark only when the commit message contains [update benchmark].
+  # This avoids noisy auto-commits on every push; opt in when changes affect
+  # the benchmarked code paths. Result is committed back to main via
+  # stefanzweifel/git-auto-commit-action; the perf page rebuilds on the next
+  # docs deploy.
   benchmark:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[update benchmark]')
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -88,8 +85,6 @@ jobs:
       - uses: jdx/mise-action@v4
         with:
           experimental: true
-
-      - uses: gradle/actions/setup-gradle@v4
 
       - name: Build CLI distribution
         run: mise run build
@@ -132,8 +127,6 @@ jobs:
       - uses: jdx/mise-action@v4
         with:
           experimental: true
-
-      - uses: gradle/actions/setup-gradle@v4
 
       - name: Render CLI docs
         run: mise run render
@@ -181,8 +174,6 @@ jobs:
       - uses: jdx/mise-action@v4
         with:
           experimental: true
-
-      - uses: gradle/actions/setup-gradle@v4
 
       - name: Build VitePress site
         run: mise run docs:build

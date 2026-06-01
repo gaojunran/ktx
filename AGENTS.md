@@ -64,7 +64,9 @@ Do not push if any step fails.
 
 ### CI
 
-GitHub Actions runs on every push to `main` and on PRs. The pipeline: test, build, docs build, benchmarks (main only), CLI doc regeneration (main only), and deploy to GitHub Pages (main only). See `.github/workflows/ci.yml`.
+GitHub Actions runs on every push to `main` and on PRs. The pipeline: test, build, docs build, CLI doc regeneration (main only), and deploy to GitHub Pages (main only). See `.github/workflows/ci.yml`.
+
+Benchmarks only run when the commit message contains `[update benchmark]`. Include this tag when your changes affect benchmarked code paths (script compilation, daemon startup, CLI invocation latency, etc.).
 
 ## Documentation Requirements
 
@@ -83,3 +85,7 @@ User-facing changes include: new CLI flags or subcommands, changed default behav
 Changes that do NOT require docs updates: internal refactors, private API changes, test improvements, build system tweaks, performance optimizations with no observable behavior change.
 
 The docs are built from `docs/` and deployed to [gaojunran.github.io/ktx](https://gaojunran.github.io/ktx/). Use `mise run docs:dev` to preview locally.
+
+## Commit and Push
+
+Use **git** (not jj) for version control. After making changes, commit and push. There is no need to wait for CI to finish before ending the conversation.

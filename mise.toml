@@ -10,7 +10,7 @@ pnpm = "10"
 kotlin = "2.3.21"
 # hyperfine drives the benchmarks. Available via mise's aqua backend so
 # CI does not have to apt-install or curl release debs.
-"aqua:sharkdp/hyperfine" = "1.18.0"
+hyperfine = "1.18.0"
 # usage CLI consumes the KDL spec produced by `ktx usage` and renders it
 # to markdown / shell completions / man-pages. Used by `mise run render`.
 usage = "latest"
@@ -27,35 +27,35 @@ _.path = ["./modules/cli/build/install/ktx/bin"]
 
 [tasks.build]
 description = "Build the ktx CLI distribution into modules/cli/build/install/ktx/"
-run = "./gradlew :modules:cli:installDist"
+run = "gradle :modules:cli:installDist"
 
 [tasks.test]
 description = "Run all unit tests"
-run = "./gradlew test"
+run = "gradle test"
 
 [tasks."test:watch"]
 description = "Run unit tests continuously on file changes"
-run = "./gradlew test --continuous"
+run = "gradle test --continuous"
 
 [tasks.run]
 description = "Run a sample script through the freshly built ktx CLI"
 depends = ["build"]
-run = "./modules/cli/build/install/ktx/bin/ktx samples/hello.main.kts foo bar"
+run = "ktx samples/hello.main.kts foo bar"
 
 [tasks."daemon:stop"]
 description = "Stop every running ktx daemon (no-op if none)"
-run = "./modules/cli/build/install/ktx/bin/ktx daemon stop --all || true"
+run = "ktx daemon stop --all || true"
 
 [tasks."daemon:status"]
 description = "Show status of all ktx daemons"
-run = "./modules/cli/build/install/ktx/bin/ktx daemon status --all"
+run = "ktx daemon status --all"
 
 [tasks."native:hello"]
 description = "Compile samples/hello.main.kts into a single native binary (samples/hello). Requires GraalVM via mise (e.g. `mise install java@oracle-graalvm-21.0.7`); the task locates native-image via $GRAALVM_HOME / $JAVA_HOME / $PATH."
 depends = ["build"]
 run = """
 rm -f samples/hello samples/hello.exe
-./modules/cli/build/install/ktx/bin/ktx compile --native --collect-metadata samples/hello.main.kts
+ktx compile --native --collect-metadata samples/hello.main.kts
 ./samples/hello arg1 arg2
 """
 
@@ -64,14 +64,14 @@ description = "Compile samples/jackson.main.kts into a single native binary (sam
 depends = ["build"]
 run = """
 rm -f samples/jackson samples/jackson.exe
-./modules/cli/build/install/ktx/bin/ktx compile --native --collect-metadata samples/jackson.main.kts
+ktx compile --native --collect-metadata samples/jackson.main.kts
 ./samples/jackson
 """
 
 [tasks.clean]
 description = "Clean Gradle build outputs and ktx runtime caches"
 run = """
-./gradlew clean
+gradle clean
 rm -rf ~/.cache/ktx
 """
 
@@ -94,7 +94,7 @@ run = "pnpm build"
 
 [tasks.dist]
 description = "Produce release archives (zip + tar.gz) under modules/cli/build/distributions/"
-run = "./gradlew :modules:cli:distZip :modules:cli:distTar"
+run = "gradle :modules:cli:distZip :modules:cli:distTar"
 
 [tasks.bench]
 description = "Run hyperfine benchmarks of ktx vs main-kts; refresh benchmarks/results.json"

@@ -7,6 +7,10 @@ out/
 *.iml
 .DS_Store
 local.properties
+# Gradle wrapper is unnecessary: mise manages the Gradle version.
+gradle/wrapper/
+gradlew
+gradlew.bat
 samples/*.jar
 # native binary outputs from `ktx compile --native`. Note: we don't ignore
 # samples/*.native-meta/ — that directory is intentionally checked in so

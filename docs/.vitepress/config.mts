@@ -89,6 +89,7 @@ export default withMermaid(defineConfig({
           text: 'Guide',
           items: [
             { text: 'Getting Started', link: '/guide/getting-started' },
+            { text: 'Shell Scripting', link: '/guide/shell' },
             { text: 'Daemon Mode', link: '/guide/daemon' },
             { text: 'Lockfiles', link: '/guide/lockfile' },
             { text: 'Toolchain Management', link: '/guide/toolchain' },

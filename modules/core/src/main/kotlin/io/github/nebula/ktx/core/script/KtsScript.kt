@@ -65,6 +65,16 @@ class KtsScriptDefinition : ScriptCompilationConfiguration(
             CompilerOptions::class,
             Toolchain::class,
         )
+        // shell DSL — available in every .kts script (functions have no KClass, so use string imports)
+        defaultImports(
+            "io.github.nebula.ktx.shell.sh",
+            "io.github.nebula.ktx.shell.shAll",
+            "io.github.nebula.ktx.shell.retry",
+            "io.github.nebula.ktx.shell.RawArg",
+            "io.github.nebula.ktx.shell.ShResult",
+            "io.github.nebula.ktx.shell.ShellException",
+            "io.github.nebula.ktx.shell.ShellTimeoutException",
+        )
         jvm {
             // wholeClasspath = true: expose every jar visible to the
             // KtsScriptDefinition classloader to the script, so main-kts

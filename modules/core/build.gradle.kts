@@ -9,6 +9,8 @@ dependencies {
     implementation(libs.tomlj)
     // For merging GraalVM native-image metadata JSON files (NativeImageFlow).
     implementation(libs.kotlinx.serialization.json)
+    // Expose shell DSL types to scripts compiled against KtsScriptDefinition.
+    implementation(project(":modules:shell"))
 
     testImplementation(kotlin("test"))
 }

@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx run [FLAGS] <SCRIPT> [ARGS]…`
 
+Compile and execute a .kts script
+
 ## Arguments
 
 ### `<SCRIPT>`

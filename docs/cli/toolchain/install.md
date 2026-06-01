@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx toolchain install <MAJOR>`
 
+Download and install a JDK from Adoptium
+
 ## Arguments
 
 ### `<MAJOR>`

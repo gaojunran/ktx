@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx cache gc [--max-size <MAX_SIZE>]`
 
+Evict oldest cache entries until total size is within cap
+
 ## Flags
 
 ### `--max-size <MAX_SIZE>`

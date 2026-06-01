@@ -1,6 +1,7 @@
 package io.github.nebula.ktx.cli.command
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
@@ -40,6 +41,29 @@ import kotlin.system.exitProcess
  * each platform on its own runner.
  */
 class CompileCommand : CliktCommand(name = "compile") {
+    override fun help(context: Context): String = "Compile a script into a distributable artifact"
+    override fun helpEpilog(context: Context): String = """
+        Three output formats (mutually exclusive):
+
+          (default)        Fat jar — runnable via `java -jar <output>.jar`.
+                            Default output: <script>.jar next to the script.
+
+          --self-contained  Directory with a jlink-built minimal JRE.
+                            End users do not need Java installed.
+                            Output: <script>/ with bin/, lib/, runtime/.
+
+          --native          Single native binary via GraalVM native-image.
+                            ~10-20 MB, ~10-50 ms cold start, no JRE needed.
+                            Requires native-image on PATH or under
+                            ${'$'}GRAALVM_HOME / ${'$'}JAVA_HOME.
+
+        --collect-metadata (only with --native) runs the fat jar once under
+        native-image-agent to capture reflection traces, saving them to
+        <script>.native-meta/ for reuse on subsequent builds.
+
+        Both --self-contained and --native target the host platform only
+        (jlink and native-image cannot cross-compile).
+    """.trimIndent()
 
     private val scriptArg by argument(name = "SCRIPT", help = "Script path to compile")
 

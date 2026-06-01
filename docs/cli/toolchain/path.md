@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx toolchain path <MAJOR>`
 
+Print the bin/java path for an installed JDK
+
 ## Arguments
 
 ### `<MAJOR>`

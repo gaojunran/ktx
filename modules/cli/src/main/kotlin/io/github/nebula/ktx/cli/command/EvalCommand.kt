@@ -1,6 +1,7 @@
 package io.github.nebula.ktx.cli.command
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.multiple
 import com.github.ajalt.clikt.parameters.options.option
@@ -20,6 +21,14 @@ import kotlin.system.exitProcess
  * effects, is Unit, or is a coroutine builder.
  */
 class EvalCommand : CliktCommand(name = "eval") {
+    override fun help(context: Context): String = "Evaluate a Kotlin expression or statement"
+    override fun helpEpilog(context: Context): String = """
+        The expression is treated as a complete script and compiled/executed.
+        No auto-wrap with println — use `ktx -e 'println(2 + 3)'` when you
+        want output.
+
+        Shortcut: `ktx -e "<expr>"` is rewritten to `ktx eval -e "<expr>"`.
+    """.trimIndent()
 
     private val expr by option("-e", "--expr", help = "Kotlin expression or statement to execute").required()
     private val scriptArgs by argument(name = "ARGS", help = "Arguments forwarded to the script").multiple()

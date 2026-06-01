@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx eval <-e --expr <EXPR>> [ARGS]…`
 
+Evaluate a Kotlin expression or statement
+
 ## Arguments
 
 ### `[ARGS]…`

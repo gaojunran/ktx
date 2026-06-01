@@ -2,3 +2,5 @@
 # `ktx cache clean`
 
 - **Usage**: `ktx cache clean`
+
+Delete all cached compiled scripts

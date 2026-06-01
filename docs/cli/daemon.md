@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx daemon <SUBCOMMAND>`
 
+Inspect and control the ktx daemon
+
 ## Subcommands
 
 - [`ktx daemon logs [FLAGS]`](/cli/daemon/logs.md)

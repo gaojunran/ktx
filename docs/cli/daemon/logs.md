@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx daemon logs [FLAGS]`
 
+Dump the daemon's log file
+
 ## Flags
 
 ### `--all`

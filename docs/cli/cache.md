@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx cache <SUBCOMMAND>`
 
+Inspect and prune the script compile cache
+
 ## Subcommands
 
 - [`ktx cache clean`](/cli/cache/clean.md)

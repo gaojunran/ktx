@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx daemon status [--all] [--jdk <JDK>]`
 
+Show daemon status (uptime, scripts served, heap usage)
+
 ## Flags
 
 ### `--all`

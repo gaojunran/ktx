@@ -1,6 +1,7 @@
 package io.github.nebula.ktx.cli
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.core.subcommands
 import io.github.nebula.ktx.cli.command.AddCommand
@@ -38,6 +39,8 @@ import io.github.nebula.ktx.cli.command.UsageCommand
  * without hacking `invokedSubcommand`.
  */
 class KtxCommand : CliktCommand(name = "ktx") {
+    override fun help(context: Context): String = "A modern Kotlin script runner."
+    override fun helpEpilog(context: Context): String = "Documentation: https://gaojunran.github.io/ktx/"
     override fun run() = Unit
 }
 

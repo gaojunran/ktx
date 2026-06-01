@@ -1,6 +1,7 @@
 package io.github.nebula.ktx.cli.command
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
@@ -21,10 +22,20 @@ import kotlin.io.path.readText
  * use --jdk to target another major. `stop --all` stops every daemon.
  */
 class DaemonCommand : CliktCommand(name = "daemon") {
+    override fun help(context: Context): String = "Inspect and control the ktx daemon"
+    override fun helpEpilog(context: Context): String = """
+        The daemon keeps the Kotlin compiler warm across runs, reducing
+        dev-loop time from ~750 ms to ~250 ms. It is auto-forked by
+        `ktx run --daemon` when not already running.
+
+        Subcommands default to the daemon for the current JVM major version;
+        use --jdk to target another version, or --all for every daemon.
+    """.trimIndent()
     override fun run() = Unit
 }
 
 class DaemonStatusCommand : CliktCommand(name = "status") {
+    override fun help(context: Context): String = "Show daemon status (uptime, scripts served, heap usage)"
 
     private val all by option("--all", help = "List every daemon").flag()
     private val jdkOption by option("--jdk", help = "Target JDK major version (default: current)").int()
@@ -75,6 +86,7 @@ class DaemonStatusCommand : CliktCommand(name = "status") {
 }
 
 class DaemonStopCommand : CliktCommand(name = "stop") {
+    override fun help(context: Context): String = "Stop a running daemon"
 
     private val all by option("--all", help = "Stop every daemon").flag()
     private val jdkOption by option("--jdk", help = "Target JDK major version (default: current)").int()
@@ -141,6 +153,11 @@ class DaemonStopCommand : CliktCommand(name = "stop") {
  *     tail -f "$(ktx daemon logs --path)"
  */
 class DaemonLogsCommand : CliktCommand(name = "logs") {
+    override fun help(context: Context): String = "Dump the daemon's log file"
+    override fun helpEpilog(context: Context): String = """
+        Print just the path with --path, useful for piping:
+          tail -f "$(ktx daemon logs --path)"
+    """.trimIndent()
 
     private val all by option("--all", help = "Dump every daemon's log").flag()
     private val jdkOption by option("--jdk", help = "Target JDK major version (default: current)").int()

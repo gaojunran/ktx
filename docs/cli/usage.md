@@ -2,3 +2,5 @@
 # `ktx usage`
 
 - **Usage**: `ktx usage`
+
+Emit a usage spec (KDL) for shell completions and doc generation

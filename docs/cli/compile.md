@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx compile [FLAGS] <SCRIPT>`
 
+Compile a script into a distributable artifact
+
 ## Arguments
 
 ### `<SCRIPT>`

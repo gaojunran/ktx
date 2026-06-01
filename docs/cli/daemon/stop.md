@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx daemon stop [--all] [--jdk <JDK>]`
 
+Stop a running daemon
+
 ## Flags
 
 ### `--all`

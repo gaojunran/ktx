@@ -1,6 +1,7 @@
 package io.github.nebula.ktx.cli.command
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.multiple
 import com.github.ajalt.clikt.parameters.options.flag
@@ -41,6 +42,21 @@ import kotlin.system.exitProcess
  * daemon does not yet support custom resolver injection; Phase 2.2 will).
  */
 class RunCommand : CliktCommand(name = "run") {
+    override fun help(context: Context): String = "Compile and execute a .kts script"
+    override fun helpEpilog(context: Context): String = """
+        When SCRIPT is `-`, read script source from stdin.
+
+        Dependency resolution modes:
+          (default)  Resolve online; no lockfile involved.
+          --frozen   Resolve only from the lockfile; no network access (CI-friendly).
+          --lock     Resolve online and write/refresh the lockfile before running.
+
+        Daemon mode (--daemon) keeps the Kotlin compiler warm across runs,
+        reducing dev-loop time from ~750 ms to ~250 ms. The daemon is
+        auto-forked when not already running. Also enabled by KTX_DAEMON=1.
+
+        --frozen / --lock are mutually exclusive with --daemon.
+    """.trimIndent()
 
     private val log = LoggerFactory.getLogger("ktx.cli.run")
 

@@ -165,6 +165,8 @@ A few extra modules — `jdk.unsupported`, `java.naming`, `java.logging` — are
 
 ## Native binary: zero Java, single file
 
+> **Experimental** — The `--native` flag is still early. Many scripts will fail to build due to incomplete reflection metadata. Only simple scripts (no deps, or jackson-based) are known to work. Expect iteration as the metadata surface expands.
+
 `--native` produces a single executable file via GraalVM `native-image`. End users get one binary they double-click or `chmod +x` and run; no JRE, no fat jar, nothing else.
 
 ```bash

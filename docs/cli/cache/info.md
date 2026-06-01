@@ -2,3 +2,5 @@
 # `ktx cache info`
 
 - **Usage**: `ktx cache info`
+
+Show cache path, entry count, and total size

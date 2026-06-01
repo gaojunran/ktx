@@ -1,6 +1,7 @@
 package io.github.nebula.ktx.cli.command
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.arguments.argument
 import io.github.nebula.ktx.toolchain.ToolchainStore
 
@@ -14,10 +15,12 @@ import io.github.nebula.ktx.toolchain.ToolchainStore
  *     handy for shell use
  */
 class ToolchainCommand : CliktCommand(name = "toolchain") {
+    override fun help(context: Context): String = "Manage JDK installations used by @file:Toolchain"
     override fun run() = Unit
 }
 
 class ToolchainListCommand : CliktCommand(name = "list") {
+    override fun help(context: Context): String = "List installed JDK versions"
     override fun run() {
         val store = ToolchainStore()
         val entries = store.list()
@@ -32,6 +35,7 @@ class ToolchainListCommand : CliktCommand(name = "list") {
 }
 
 class ToolchainInstallCommand : CliktCommand(name = "install") {
+    override fun help(context: Context): String = "Download and install a JDK from Adoptium"
     private val majorArg by argument(name = "MAJOR", help = "JDK major version, e.g. 21 / 17")
 
     override fun run() {
@@ -43,6 +47,11 @@ class ToolchainInstallCommand : CliktCommand(name = "install") {
 }
 
 class ToolchainPathCommand : CliktCommand(name = "path") {
+    override fun help(context: Context): String = "Print the bin/java path for an installed JDK"
+    override fun helpEpilog(context: Context): String = """
+        Useful for scripting:
+          export JAVA_HOME="$(ktx toolchain path 17)"
+    """.trimIndent()
     private val majorArg by argument(name = "MAJOR", help = "JDK major version")
 
     override fun run() {

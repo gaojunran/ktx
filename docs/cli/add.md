@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx add [--no-lock] <COORDINATES> <SCRIPT>`
 
+Add a dependency to a script and refresh its lockfile
+
 ## Arguments
 
 ### `<COORDINATES>`

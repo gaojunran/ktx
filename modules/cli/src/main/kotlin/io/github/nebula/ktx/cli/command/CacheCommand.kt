@@ -1,6 +1,7 @@
 package io.github.nebula.ktx.cli.command
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import io.github.nebula.ktx.core.exec.ScriptRunner
@@ -25,10 +26,17 @@ import kotlin.io.path.listDirectoryEntries
  * detection and is best left to a dedicated subcommand.
  */
 class CacheCommand : CliktCommand(name = "cache") {
+    override fun help(context: Context): String = "Inspect and prune the script compile cache"
+    override fun helpEpilog(context: Context): String = """
+        The compile cache lives at ~/.cache/ktx/compiled/ and stores one jar
+        per compiled script. The daemon directory (~/.cache/ktx/d/) is not
+        managed here — use `ktx daemon stop` instead.
+    """.trimIndent()
     override fun run() = Unit
 }
 
 class CacheInfoCommand : CliktCommand(name = "info") {
+    override fun help(context: Context): String = "Show cache path, entry count, and total size"
     override fun run() {
         val dir = ScriptRunner.defaultCacheDir()
         if (!dir.exists()) {
@@ -51,6 +59,7 @@ class CacheInfoCommand : CliktCommand(name = "info") {
 }
 
 class CacheCleanCommand : CliktCommand(name = "clean") {
+    override fun help(context: Context): String = "Delete all cached compiled scripts"
     override fun run() {
         val dir = ScriptRunner.defaultCacheDir()
         if (!dir.exists()) {
@@ -77,6 +86,7 @@ class CacheCleanCommand : CliktCommand(name = "clean") {
  * gc is idempotent.
  */
 class CacheGcCommand : CliktCommand(name = "gc") {
+    override fun help(context: Context): String = "Evict oldest cache entries until total size is within cap"
 
     private val maxSizeArg by option(
         "--max-size",

@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx toolchain <SUBCOMMAND>`
 
+Manage JDK installations used by @file:Toolchain
+
 ## Subcommands
 
 - [`ktx toolchain install <MAJOR>`](/cli/toolchain/install.md)

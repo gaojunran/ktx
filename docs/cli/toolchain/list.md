@@ -2,3 +2,5 @@
 # `ktx toolchain list`
 
 - **Usage**: `ktx toolchain list`
+
+List installed JDK versions

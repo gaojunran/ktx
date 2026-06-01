@@ -1,6 +1,7 @@
 package io.github.nebula.ktx.cli.command
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
@@ -27,6 +28,15 @@ import kotlin.system.exitProcess
  * the compiler merges them naturally; simplicity beats cleverness here.
  */
 class AddCommand : CliktCommand(name = "add") {
+    override fun help(context: Context): String = "Add a dependency to a script and refresh its lockfile"
+    override fun helpEpilog(context: Context): String = """
+        Inserts @file:DependsOn("coord") into the script header, then
+        runs `ktx lock` to refresh the lockfile. Use --no-lock to skip
+        the lockfile refresh.
+
+        Example:
+          ktx add com.squareup.moshi:moshi-kotlin:1.15.2 app.main.kts
+    """.trimIndent()
 
     private val coordArg by argument(name = "COORDINATES", help = "Maven coordinates, e.g. io.ktor:ktor-client-core-jvm:3.2.0")
     private val scriptArg by argument(name = "SCRIPT", help = "Script path")

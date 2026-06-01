@@ -3,6 +3,8 @@
 
 - **Usage**: `ktx lock <SCRIPT>`
 
+Resolve dependencies and write a lockfile
+
 ## Arguments
 
 ### `<SCRIPT>`

@@ -1,6 +1,7 @@
 package io.github.nebula.ktx.cli.command
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.arguments.argument
 import io.github.nebula.ktx.core.deps.LockingFlow
 import io.github.nebula.ktx.core.exec.ScriptRunner
@@ -24,6 +25,13 @@ import kotlin.system.exitProcess
  *   3. Write the lockfile next to the script with a `.lock` suffix.
  */
 class LockCommand : CliktCommand(name = "lock") {
+    override fun help(context: Context): String = "Resolve dependencies and write a lockfile"
+    override fun helpEpilog(context: Context): String = """
+        Writes <script>.lock next to the script. The script body is not
+        executed — only the @file: annotations are processed.
+
+        Use with `ktx run --frozen <script>` for reproducible, offline CI runs.
+    """.trimIndent()
 
     private val scriptArg by argument(
         name = "SCRIPT",

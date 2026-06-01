@@ -2,6 +2,7 @@ package io.github.nebula.ktx.cli.command
 
 import clikt_usage.generate
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.Context
 
 /**
  * `ktx usage`
@@ -23,6 +24,7 @@ import com.github.ajalt.clikt.core.CliktCommand
  * subcommands are wired up, breaking the chicken-and-egg.
  */
 class UsageCommand(private val rootSupplier: () -> CliktCommand) : CliktCommand(name = "usage") {
+    override fun help(context: Context): String = "Emit a usage spec (KDL) for shell completions and doc generation"
     override fun run() {
         echo(generate(rootSupplier()))
     }
